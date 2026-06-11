@@ -58,10 +58,10 @@ scripts/install-cachyos.sh
 It is a destructive fresh-install script intended to run from a CachyOS live ISO
 booted in UEFI mode.
 
-After this repo is pushed to GitHub, the intended command shape is:
+From the CachyOS live ISO, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/scripts/install-cachyos.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/install-cachyos.sh | sudo bash
 ```
 
 The script prompts for the target disks, hostname, username, passwords, and a

@@ -8,22 +8,20 @@ scripts/install-cachyos.sh
 
 It is intended to be run from a CachyOS live ISO booted in UEFI mode.
 
-## Future GitHub Command
+## GitHub Command
 
-After this repository is pushed to GitHub, the live ISO flow should be:
+From the CachyOS live ISO, the flow should be:
 
 1. Open a browser in the live environment.
 2. Navigate to the repository.
 3. Copy the raw install command.
 4. Paste it into a terminal.
 
-Command shape:
+Command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/scripts/install-cachyos.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/install-cachyos.sh | sudo bash
 ```
-
-Replace `<owner>`, `<repo>`, and `<branch>` with the real GitHub location.
 
 ## What The Script Does
 
