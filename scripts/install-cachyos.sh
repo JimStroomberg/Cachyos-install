@@ -220,6 +220,10 @@ require_uefi() {
   efibootmgr -v >/dev/null || die "EFI variables are not available. Reboot the ISO in UEFI mode."
 }
 
+require_tty() {
+  [[ -r /dev/tty ]] || die "No interactive terminal is available for prompts."
+}
+
 require_commands() {
   local missing=()
   local cmd
@@ -236,7 +240,7 @@ prompt_default() {
   local default="$2"
   local value
   printf '%s [%s]: ' "$prompt" "$default" >&2
-  read -r value
+  read -r value < /dev/tty
   printf '%s' "${value:-$default}"
 }
 
@@ -245,7 +249,9 @@ prompt_required() {
   local value
   while true; do
     printf '%s: ' "$prompt" >&2
-    read -r value
+    if ! read -r value < /dev/tty; then
+      die "Could not read from interactive terminal."
+    fi
     [[ -n "$value" ]] && {
       printf '%s' "$value"
       return
@@ -258,10 +264,10 @@ prompt_password() {
   local first second
   while true; do
     printf '%s: ' "$prompt" >&2
-    read -r -s first
+    read -r -s first < /dev/tty
     printf '\n' >&2
     printf 'Confirm %s: ' "$prompt" >&2
-    read -r -s second
+    read -r -s second < /dev/tty
     printf '\n' >&2
     if [[ -n "$first" && "$first" == "$second" ]]; then
       printf '%s' "$first"
@@ -367,7 +373,8 @@ The script will permanently wipe and repartition:
 
 EOF
   local answer
-  read -r -p "Type WIPE AND INSTALL to continue: " answer
+  printf 'Type WIPE AND INSTALL to continue: ' >&2
+  read -r answer < /dev/tty
   [[ "$answer" == "WIPE AND INSTALL" ]] || die "Confirmation did not match. Aborting."
 }
 
@@ -576,6 +583,7 @@ verify_installation() {
 
 main() {
   require_root
+  require_tty
   require_commands awk blkid btrfs cachyos-rate-mirrors efibootmgr findmnt genfstab lsblk mkfs.btrfs mkfs.fat mkswap pacman pacstrap parted partprobe readlink sed swapon udevadm wipefs arch-chroot
   require_uefi
   select_disks
