@@ -1,80 +1,68 @@
 # Post-Install Secure Boot
 
-This document is intentionally separate from the base installation target.
+This runbook enables Secure Boot after the CachyOS base install has already
+booted successfully from the internal NVMe.
 
-The base install should be completed and verified first with Secure Boot
-disabled. Secure Boot can then be enabled as a post-install hardening step.
+Do not run this during the live ISO installation. Do not enable Secure Boot in
+firmware until the Limine enrollment step below has completed.
 
 Verified against upstream sources on 2026-06-11.
 
-## Scope
+## Target
 
-Target system:
+- CachyOS Desktop
+- UEFI boot
+- Limine boot manager
+- FAT32 `/boot`
+- No separate `/boot/efi`
+- No full-disk encryption
 
-- CachyOS Desktop.
-- UEFI boot.
-- Limine boot manager.
-- FAT32 `/boot`.
-- No separate `/boot/efi`.
-- No full-disk encryption.
+## Important Limine Rule
 
-This document is not part of the first-pass live-ISO install script. It should
-be implemented as a separate post-install script or runbook after the machine
-boots successfully.
+Do not use `sbctl-batch-sign` on this Limine setup.
 
-## Why Separate
+CachyOS documents `sbctl-batch-sign` as incompatible with Limine. Limine can
+verify boot file hashes, and generic signing can modify files after Limine has
+calculated checksums.
 
-CachyOS explicitly requires Secure Boot to be disabled during installation.
-The installation should prove that partitioning, Btrfs, Limine, kernel entries,
-users, networking, and services all work before adding firmware key management
-and boot-chain signing.
+Use this flow instead:
 
-Keeping this separate also avoids mixing destructive disk work with firmware
-state changes.
+```text
+sbctl keys -> firmware key enrollment -> Limine config enrollment -> limine-update -> enable Secure Boot
+```
 
-## Important Limine Notes
+## 1. Confirm Base System
 
-Do not use `sbctl-batch-sign` for the Limine baseline.
-
-CachyOS documents `sbctl-batch-sign` as not compatible with Limine. Limine can
-hash-check its boot files; manually signing kernel/initramfs files can modify
-files after Limine has calculated hashes and cause checksum verification
-failures.
-
-For Limine, the CachyOS Secure Boot path is:
-
-- Use `sbctl` for custom Secure Boot keys.
-- Enable Limine config checksum enrollment.
-- Use `limine-enroll-config`.
-- Run `limine-update`.
-- Sign only what Limine needs through the Limine tooling path.
-
-## Preconditions
-
-Before starting:
+Run this from the installed CachyOS system, not from the live ISO:
 
 ```bash
+findmnt /
 findmnt /boot
-cat /etc/default/limine
-ls -la /boot
+sudo btrfs filesystem usage /
+swapon --show
 sudo limine-update
+```
+
+If those commands look sane and `limine-update` succeeds, continue.
+
+## 2. Install sbctl
+
+```bash
+sudo pacman -Syu sbctl
 sudo sbctl status
 ```
 
-Expected before Secure Boot setup:
+Before firmware setup, it is normal to see:
 
 ```text
-Setup Mode: may be enabled only after firmware key reset
 Secure Boot: Disabled
+Setup Mode: Disabled
 ```
 
-Install `sbctl` if it is missing:
+That means the firmware still has existing keys enrolled. Continue to the next
+step.
 
-```bash
-sudo pacman -S sbctl
-```
-
-## Firmware Setup Mode
+## 3. Enter Firmware Setup Mode
 
 Reboot into firmware:
 
@@ -84,109 +72,89 @@ systemctl reboot --firmware-setup
 
 In firmware:
 
-- Put Secure Boot into setup/custom mode.
-- Clear or delete existing Secure Boot variables if needed.
-- Keep CSM disabled.
-- Do not enable Secure Boot enforcement yet unless the key enrollment steps
-  have already succeeded.
+- Keep Secure Boot enforcement disabled for now.
+- Set Secure Boot mode to `Custom` if available.
+- Clear/delete existing Secure Boot keys, or choose the firmware option that
+  resets Secure Boot to setup mode.
+- Keep CSM/Legacy boot disabled.
+- Save and reboot back into CachyOS.
 
-Motherboard notes:
-
-- MSI boards may require Secure Boot Mode `Custom` plus a maximum-security
-  compatibility option.
-- Some ASUS boards require deleting Secure Boot variables under key management.
-- Some ASUS boards enable Secure Boot by setting OS Type to `Windows UEFI Mode`;
-  `Other OS` can mean Secure Boot is effectively disabled.
-
-## Enroll Keys With sbctl
-
-After rebooting back into CachyOS with firmware in setup mode:
+Back in CachyOS, confirm setup mode:
 
 ```bash
 sudo sbctl status
-sudo sbctl create-keys
 ```
 
-Default enrollment:
+Expected:
+
+```text
+Secure Boot: Disabled
+Setup Mode: Enabled
+```
+
+Do not enable Secure Boot yet.
+
+## 4. Create And Enroll Keys
+
+Run:
 
 ```bash
+sudo sbctl create-keys
 sudo sbctl enroll-keys --microsoft --firmware-builtin
+sudo sbctl status
 ```
 
-ASUS exception:
+After enrollment, it is normal for setup mode to become disabled again while
+Secure Boot itself still remains disabled:
+
+```text
+Secure Boot: Disabled
+Setup Mode: Disabled
+```
+
+If enrollment fails on an ASUS board or the firmware reports duplicate
+`builtin-db` entries, use this enrollment command instead:
 
 ```bash
 sudo sbctl enroll-keys --microsoft
 ```
 
-Use the ASUS exception if the board creates duplicate `builtin-db` entries or
-throws a Secure Boot violation after enrollment.
+Do not reboot to enable Secure Boot yet. Configure Limine first.
 
-Check status:
+## 5. Configure Limine Enrollment
 
-```bash
-sudo sbctl status
-```
-
-At this point, Secure Boot can still show disabled. That is expected until the
-firmware Secure Boot enforcement option is enabled.
-
-## Configure Limine For Secure Boot
-
-Enable Limine config checksum enrollment:
+Enable Limine config enrollment:
 
 ```bash
-sudoedit /etc/default/limine
+sudo sed -i 's/^ENABLE_ENROLL_LIMINE_CONFIG=.*/ENABLE_ENROLL_LIMINE_CONFIG=yes/' /etc/default/limine
+grep -q '^ENABLE_ENROLL_LIMINE_CONFIG=' /etc/default/limine || echo 'ENABLE_ENROLL_LIMINE_CONFIG=yes' | sudo tee -a /etc/default/limine
 ```
 
-Ensure this setting exists:
-
-```text
-ENABLE_ENROLL_LIMINE_CONFIG=yes
-```
-
-Check `/boot/limine.conf` for a wallpaper line:
-
-```bash
-sudo cat /boot/limine.conf
-```
-
-If the config contains a line like:
-
-```text
-wallpaper: boot():/limine-splash.png
-```
-
-generate a BLAKE2B hash:
-
-```bash
-sudo b2sum /boot/limine-splash.png
-```
-
-Append the generated hash to the wallpaper path in `/boot/limine.conf`:
-
-```text
-wallpaper: boot():/limine-splash.png#<generated-hash>
-```
-
-Then enroll and update Limine:
+Enroll and update Limine:
 
 ```bash
 sudo limine-enroll-config
 sudo limine-update
+sudo sbctl status
 ```
 
-## Enable Secure Boot In Firmware
+If both Limine commands succeed, continue.
 
-Reboot into firmware again:
+## 6. Enable Secure Boot In Firmware
+
+Reboot into firmware:
 
 ```bash
 systemctl reboot --firmware-setup
 ```
 
-Enable Secure Boot enforcement.
+In firmware:
 
-For ASUS boards that use the `OS Type` wording, use:
+- Enable Secure Boot enforcement.
+- Keep Secure Boot mode as `Custom` if that is how keys were enrolled.
+- Save and boot back into CachyOS.
+
+ASUS wording may look like this:
 
 ```text
 Boot -> Secure Boot
@@ -194,17 +162,16 @@ OS Type          -> Windows UEFI Mode
 Secure Boot Mode -> Custom
 ```
 
-Boot back into CachyOS.
+On some ASUS boards, `Other OS` means Secure Boot is effectively disabled.
 
-## Verification
+## 7. Verify After Boot
 
-Run:
+Back in CachyOS:
 
 ```bash
 sudo sbctl status
-bootctl
-sudo limine-update
 sudo sbctl verify
+sudo limine-update
 ```
 
 Expected:
@@ -214,19 +181,25 @@ Secure Boot: Enabled
 Setup Mode: Disabled
 ```
 
-If `sbctl verify` reports unsigned kernel/initramfs paths under `/boot`, do not
-blindly run `sbctl-batch-sign` on this Limine setup. Re-check Limine Secure Boot
-configuration first.
+If `sbctl verify` reports unsigned kernel or initramfs files under `/boot`, do
+not run `sbctl-batch-sign`. Re-check `/etc/default/limine`, run
+`limine-enroll-config`, then run `limine-update` again.
 
-## Recovery Notes
+## Recovery
 
 If the machine fails to boot after enabling Secure Boot:
 
 1. Disable Secure Boot in firmware.
 2. Boot the installed system again, or boot the CachyOS live ISO.
 3. Use `cachy-chroot` if needed.
-4. Re-check `/etc/default/limine`, `/boot/limine.conf`, `limine-enroll-config`,
-   and `limine-update`.
+4. Re-check:
+
+```bash
+cat /etc/default/limine
+sudo limine-enroll-config
+sudo limine-update
+sudo sbctl status
+```
 
 ## Source References
 
