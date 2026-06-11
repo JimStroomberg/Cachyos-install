@@ -35,6 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/
 - Creates CachyOS default Btrfs subvolumes.
 - Installs the CachyOS package baseline and KDE Plasma.
 - Configures timezone, locales, hostname, user, sudo, services, and Limine.
+- Saves full output to a timestamped log on the live environment Desktop.
 - Prints verification output before reboot.
 
 ## User Inputs
@@ -59,3 +60,13 @@ Secure Boot is intentionally not configured by this script. See:
 ```text
 installation/post-install-secure-boot.md
 ```
+
+## Logging
+
+Each run writes a full log to the live environment Desktop:
+
+```text
+~/Desktop/cachyos-install-YYYYmmdd-HHMMSS.log
+```
+
+If no live user Desktop can be found, the script falls back to `/tmp`.

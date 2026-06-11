@@ -67,6 +67,9 @@ curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/
 The script prompts for the target disks, hostname, username, passwords, and a
 destructive confirmation phrase before wiping anything.
 
+Each run writes a full timestamped log to the live environment Desktop so it can
+be uploaded or copied to USB if debugging is needed.
+
 ## Safety Status
 
 Current status: first-pass automation.

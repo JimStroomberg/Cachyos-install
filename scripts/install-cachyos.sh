@@ -201,17 +201,59 @@ die() {
   exit 1
 }
 
-run() {
-  printf '+ %q' "$1"
-  shift
-  printf ' %q' "$@"
-  printf '\n'
-  "$@"
-}
-
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
     die "Run this script as root, for example: curl -fsSL <url> | sudo bash"
+  fi
+}
+
+setup_logging() {
+  local live_user live_home log_dir timestamp
+  live_user="${SUDO_USER:-}"
+
+  if [[ -n "$live_user" && "$live_user" != "root" ]]; then
+    live_home="$(getent passwd "$live_user" | cut -d: -f6 || true)"
+  else
+    live_home=""
+  fi
+
+  if [[ -z "$live_home" && -d /home/cachyos ]]; then
+    live_user="cachyos"
+    live_home="/home/cachyos"
+  fi
+
+  if [[ -n "$live_home" && -d "$live_home" ]]; then
+    log_dir="$live_home/Desktop"
+    mkdir -p "$log_dir"
+  else
+    log_dir="/tmp"
+  fi
+
+  timestamp="$(date +%Y%m%d-%H%M%S)"
+  LOG_FILE="$log_dir/cachyos-install-$timestamp.log"
+  touch "$LOG_FILE"
+
+  if [[ -n "$live_user" && "$live_user" != "root" ]]; then
+    chown "$live_user":"$live_user" "$LOG_FILE" 2>/dev/null || true
+  fi
+
+  exec > >(tee -a "$LOG_FILE") 2>&1
+
+  log "Logging to $LOG_FILE"
+}
+
+on_exit() {
+  local status="$1"
+  if [[ "${LOG_FILE:-}" == "" ]]; then
+    return
+  fi
+
+  if [[ "$status" -eq 0 ]]; then
+    log "Installer finished successfully. Full log: $LOG_FILE"
+  else
+    warn "Installer exited with status $status. Full log: $LOG_FILE"
+    printf '\n--- Last 80 log lines ---\n'
+    tail -n 80 "$LOG_FILE" || true
   fi
 }
 
@@ -583,6 +625,8 @@ verify_installation() {
 
 main() {
   require_root
+  setup_logging
+  trap 'on_exit $?' EXIT
   require_tty
   require_commands awk blkid btrfs cachyos-rate-mirrors efibootmgr findmnt genfstab lsblk mkfs.btrfs mkfs.fat mkswap pacman pacstrap parted partprobe readlink sed swapon udevadm wipefs arch-chroot
   require_uefi
@@ -604,6 +648,10 @@ main() {
   cat <<EOF
 
 Review the verification output above before rebooting.
+
+The full install log is saved at:
+
+  $LOG_FILE
 
 To reboot:
 
