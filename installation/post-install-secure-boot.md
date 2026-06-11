@@ -185,6 +185,60 @@ If `sbctl verify` reports unsigned kernel or initramfs files under `/boot`, do
 not run `sbctl-batch-sign`. Re-check `/etc/default/limine`, run
 `limine-enroll-config`, then run `limine-update` again.
 
+## Troubleshooting
+
+### Red Screen: Invalid Signature Detected
+
+Symptom during boot:
+
+```text
+Invalid signature detected. Check Secure Boot Policy in Setup.
+```
+
+If CachyOS still boots after acknowledging the warning, or if changing firmware
+boot order fixes it, the likely cause is firmware trying an unsigned fallback
+EFI entry before the signed Limine entry.
+
+Check boot entries:
+
+```bash
+sudo efibootmgr -v
+sudo sbctl verify
+```
+
+The signed entry should point at Limine:
+
+```text
+\EFI\limine\limine_x64.efi
+```
+
+The fallback entry may point at:
+
+```text
+\EFI\BOOT\BOOTX64.EFI
+```
+
+If `sbctl verify` shows `limine_x64.efi` as signed but `BOOTX64.EFI` as
+unsigned, put the signed Limine entry first in firmware boot order.
+
+You can do this directly in firmware setup, or with `efibootmgr`. Example only:
+
+```bash
+sudo efibootmgr -v
+sudo efibootmgr -o 0001,0004
+```
+
+Replace `0001` and `0004` with the actual boot numbers from your machine.
+
+After confirming the signed Limine entry boots correctly with Secure Boot
+enabled, the unsigned fallback entry can optionally be removed. Example only:
+
+```bash
+sudo efibootmgr -b 0004 -B
+```
+
+Do not remove the working signed Limine entry.
+
 ## Recovery
 
 If the machine fails to boot after enabling Secure Boot:
