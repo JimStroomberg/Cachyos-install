@@ -157,16 +157,16 @@ Key updates from the earlier draft:
 - Use CachyOS-style Btrfs mount options: `defaults,noatime,compress=zstd,commit=120`.
 - Keep CachyOS's default ZRAM behavior from `cachyos-settings`.
 - Keep Secure Boot disabled during the base install; enable it only as a separate post-install step.
+- Include a gaming-ready baseline with Steam, AMD Vulkan/32-bit Vulkan support, Wine tooling, Gamescope, MangoHud, Flatpak, Firefox, and Faugus Launcher dependencies.
 
 ## Outstanding Work
 
 Before this documentation is considered production-ready:
 
-1. Validate `scripts/install-cachyos.sh` in a VM or disposable test environment where possible.
-2. Validate the final process on real hardware.
-3. Capture post-install verification output from the real machine.
-4. Configure Secure Boot only after the base install is verified.
-5. Replace the placeholder GitHub raw URL in `installation/live-iso-installer.md` once the repository location is known.
+1. Validate the expanded gaming package baseline in a fresh install.
+2. Install Faugus Launcher after first boot with `paru -S faugus-launcher`.
+3. Capture post-install verification output from the real machine after the expanded profile is validated.
+4. Keep Secure Boot as a post-install step after the base install is verified.
 
 ## Important Context
 

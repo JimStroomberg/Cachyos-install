@@ -15,6 +15,7 @@ Verified against upstream sources on 2026-06-11.
 - Boot manager: Limine.
 - Root filesystem: multi-device Btrfs.
 - Desktop profile: KDE Plasma.
+- Gaming profile: Steam-ready AMD/Vulkan desktop with Faugus Launcher dependencies.
 - Initramfs path: CachyOS mkinitcpio/Limine tooling.
 - Encryption: none.
 - Secure Boot: disabled during installation.
@@ -219,6 +220,39 @@ cachyos-plymouth-bootanimation
 
 KDE Plasma should follow the current CachyOS netinstall package set rather than
 a hand-picked minimal KDE list.
+
+Gaming baseline includes:
+
+```text
+firefox
+flatpak
+steam
+steam-devices
+mesa
+lib32-mesa
+vulkan-radeon
+lib32-vulkan-radeon
+vulkan-tools
+gamescope
+mangohud
+goverlay
+wine
+wine-gecko
+wine-mono
+winetricks
+protontricks
+umu-launcher
+```
+
+Faugus Launcher is installed after first boot from the AUR:
+
+```bash
+paru -S faugus-launcher
+```
+
+The install script should provide the AUR tooling and dependencies required for
+that package, but should not build AUR packages as root during the destructive
+live-ISO install.
 
 ## Services
 

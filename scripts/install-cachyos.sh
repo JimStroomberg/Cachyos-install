@@ -131,6 +131,46 @@ COMMON_PACKAGES=(
   xdg-utils
 )
 
+DESKTOP_APP_PACKAGES=(
+  firefox
+  flatpak
+)
+
+GAMING_PACKAGES=(
+  steam
+  steam-devices
+  mesa
+  lib32-mesa
+  vulkan-radeon
+  lib32-vulkan-radeon
+  vulkan-tools
+  gamescope
+  mangohud
+  goverlay
+  wine
+  wine-gecko
+  wine-mono
+  winetricks
+  protontricks
+  umu-launcher
+)
+
+FAUGUS_DEPENDENCY_PACKAGES=(
+  python-gobject
+  python-requests
+  python-pillow
+  python-vdf
+  python-psutil
+  python-pygame
+  python-cairo
+  libcanberra
+  imagemagick
+  icoextract
+  libayatana-appindicator
+  meson
+  ninja
+)
+
 KDE_PACKAGES=(
   ark
   bluedevil
@@ -503,7 +543,31 @@ install_packages() {
   pacstrap -K "$TARGET_MOUNT" \
     "${BASE_PACKAGES[@]}" \
     "${COMMON_PACKAGES[@]}" \
+    "${DESKTOP_APP_PACKAGES[@]}" \
+    "${GAMING_PACKAGES[@]}" \
+    "${FAUGUS_DEPENDENCY_PACKAGES[@]}" \
     "${KDE_PACKAGES[@]}"
+}
+
+copy_pacman_configuration() {
+  log "Copying CachyOS pacman repository configuration"
+  install -m 0644 /etc/pacman.conf "$TARGET_MOUNT/etc/pacman.conf"
+  if [[ -f /etc/pacman-more.conf ]]; then
+    install -m 0644 /etc/pacman-more.conf "$TARGET_MOUNT/etc/pacman-more.conf"
+  fi
+
+  sed -i '/^#\[multilib\]/{s/^#//;n;s/^#//}' "$TARGET_MOUNT/etc/pacman.conf"
+  if ! grep -q '^\[multilib\]' "$TARGET_MOUNT/etc/pacman.conf"; then
+    cat >> "$TARGET_MOUNT/etc/pacman.conf" <<'EOF'
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+EOF
+  fi
+
+  arch-chroot "$TARGET_MOUNT" pacman -Sy --noconfirm
+  arch-chroot "$TARGET_MOUNT" flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
+    || warn "Could not add Flathub remote. Flatpak can be configured after first boot."
 }
 
 write_fstab() {
@@ -518,6 +582,18 @@ write_fstab() {
 
   awk -v boot_uuid="$boot_uuid" -v swap1_uuid="$swap1_uuid" -v swap2_uuid="$swap2_uuid" '
     BEGIN { OFS="\t" }
+    $3 == "btrfs" {
+      subvol = ""
+      count = split($4, opts, ",")
+      for (i = 1; i <= count; i++) {
+        if (opts[i] ~ /^subvol=/) {
+          subvol = opts[i]
+        }
+      }
+      if (subvol != "") {
+        $4 = "defaults,noatime,compress=zstd,commit=120," subvol
+      }
+    }
     $1 == "UUID=" boot_uuid && $2 == "/boot" && $3 == "vfat" { $4 = "defaults,umask=0077" }
     ($1 == "UUID=" swap1_uuid || $1 == "UUID=" swap2_uuid) && $3 == "swap" { $4 = "defaults,pri=10" }
     { print }
@@ -639,6 +715,7 @@ main() {
   create_subvolumes
   mount_target
   install_packages
+  copy_pacman_configuration
   write_fstab
   configure_system
   configure_limine

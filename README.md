@@ -17,6 +17,7 @@ layout.
 - Boot mode: UEFI
 - Bootloader: Limine
 - Filesystem: Btrfs across both NVMe SSDs
+- Primary game launchers: Steam and Faugus Launcher
 
 ## Target Layout
 
@@ -70,24 +71,44 @@ destructive confirmation phrase before wiping anything.
 Each run writes a full timestamped log to the live environment Desktop so it can
 be uploaded or copied to USB if debugging is needed.
 
+The default install now includes a gaming-ready baseline:
+
+- Firefox
+- Steam and Steam device rules
+- AMD Mesa/Vulkan packages, including 32-bit Vulkan support
+- Gamescope
+- MangoHud and GOverlay
+- Wine, Wine Mono, Wine Gecko, Winetricks, Protontricks
+- UMU Launcher
+- Flatpak with Flathub enabled
+- Faugus Launcher build/runtime dependencies
+- `paru` for AUR packages
+
+Faugus Launcher itself is an AUR package. After first boot, install it with:
+
+```bash
+paru -S faugus-launcher
+```
+
 ## Safety Status
 
-Current status: first-pass automation.
+Current status: hardware-tested automation.
 
 Verified so far:
 
 - The target configuration has been checked against current CachyOS wiki pages
   and CachyOS Calamares Limine configuration.
 - The installer script passes Bash syntax validation.
+- The installer has completed successfully on the target hardware.
+- The installed system has booted from the internal NVMe.
+- Post-install Secure Boot has been enabled successfully after correcting
+  firmware boot order to prefer the signed Limine entry.
 
 Not yet verified:
 
-- Full execution from a CachyOS live ISO.
-- Real-hardware boot after installation.
-- Post-install Secure Boot.
-
-Do not run this against the real machine until it has been tested in a
-disposable environment or you are prepared for a full destructive reinstall.
+- The expanded gaming package baseline has not yet been run through a fresh
+  hardware install.
+- Native Faugus Launcher AUR installation remains a post-install step.
 
 ## Documentation
 

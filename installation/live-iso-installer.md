@@ -33,7 +33,12 @@ curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/
 - Wipes and repartitions both selected disks.
 - Creates the target `/boot`, swap, and multi-device Btrfs layout.
 - Creates CachyOS default Btrfs subvolumes.
-- Installs the CachyOS package baseline and KDE Plasma.
+- Installs the CachyOS package baseline, KDE Plasma, Firefox, Steam, AMD
+  Vulkan support, Wine tooling, Gamescope, MangoHud, and Faugus Launcher
+  dependencies.
+- Copies the CachyOS live ISO pacman repository configuration into the target
+  system and ensures `multilib` is enabled.
+- Adds the Flathub Flatpak remote.
 - Configures timezone, locales, hostname, user, sudo, services, and Limine.
 - Saves full output to a timestamped log on the live environment Desktop.
 - Prints verification output before reboot.
@@ -52,8 +57,8 @@ The script asks for:
 
 ## Current Status
 
-This is a first-pass automation script. It has Bash syntax checks only until it
-is run from an actual CachyOS live ISO or a close disposable test environment.
+The base installer has completed successfully on the target hardware. The
+expanded gaming package baseline still needs a fresh full-run validation.
 
 Secure Boot is intentionally not configured by this script. See:
 
@@ -70,3 +75,14 @@ Each run writes a full log to the live environment Desktop:
 ```
 
 If no live user Desktop can be found, the script falls back to `/tmp`.
+
+## Faugus Launcher
+
+The script installs the dependencies and AUR tooling needed for Faugus Launcher,
+but it does not automatically build AUR packages during installation.
+
+After first boot:
+
+```bash
+paru -S faugus-launcher
+```
