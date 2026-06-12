@@ -71,7 +71,7 @@ live environment before falling back to `whiptail` or numbered prompts.
 - Timezone.
 - Root password.
 - User password.
-- Final typed confirmation: `WIPE AND INSTALL`.
+- Final destructive confirmation.
 
 The default disk swap recommendation is total swap equal to installed RAM,
 split evenly across the selected disks. For example, a 32 GiB RAM system with

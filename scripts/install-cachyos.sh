@@ -903,14 +903,15 @@ confirm_destruction() {
   print_install_plan
 
   if [[ -n "$TUI_CMD" ]]; then
-    run_tui --title "Final destructive confirmation" --yesno "The selected disks will be wiped. Extra disks add capacity, not redundancy. Backups are required.\n\nContinue to typed confirmation?" 16 78 \
+    run_tui --title "Final destructive confirmation" --yesno "The selected disks will be wiped. Extra disks add capacity, not redundancy. Backups are required.\n\nContinue with installation?" 16 78 \
       || die "Installation cancelled."
+    return
   fi
 
   local answer
-  printf 'Type WIPE AND INSTALL to continue: ' >&2
+  printf 'Continue with installation and wipe the selected disks? [yes/NO]: ' >&2
   read -r answer < /dev/tty
-  [[ "$answer" == "WIPE AND INSTALL" ]] || die "Confirmation did not match. Aborting."
+  [[ "$answer" == "yes" ]] || die "Installation cancelled."
 }
 
 prepare_live_environment() {
