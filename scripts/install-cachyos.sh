@@ -411,15 +411,18 @@ init_tui() {
 
 ensure_tui_backend() {
   init_tui
-  if [[ -n "$TUI_CMD" || "$NO_TUI" -eq 1 ]]; then
+  if [[ "$NO_TUI" -eq 1 ]]; then
+    return
+  fi
+  if [[ "$TUI_CMD" == "dialog" ]]; then
     return
   fi
 
-  log "No dialog or whiptail menu tool found. Trying to install dialog in the live environment."
+  log "Trying to ensure dialog is available for guided terminal menus."
   if pacman -Sy --needed --noconfirm dialog; then
     init_tui
   else
-    warn "Could not install dialog. Falling back to numbered prompts."
+    warn "Could not install dialog. Falling back to whiptail if available, otherwise numbered prompts."
   fi
 }
 
