@@ -409,6 +409,14 @@ init_tui() {
   fi
 }
 
+announce_interaction_mode() {
+  if [[ -n "$TUI_CMD" ]]; then
+    log "Using $TUI_CMD for guided terminal menus."
+  else
+    log "Using numbered prompts. Type the number for each choice and press Enter; arrow keys are not used in this mode."
+  fi
+}
+
 run_tui() {
   "$TUI_CMD" "$@" < /dev/tty 3>&1 1>/dev/tty 2>&3
 }
@@ -609,6 +617,7 @@ select_boot_disk_plain() {
   local -a disks=("$@")
   local choice
   local i
+  printf '\nNumbered prompt mode: type a disk number and press Enter. Arrow keys are not used here.\n' >&2
   printf '\nAvailable disks:\n' >&2
   for i in "${!disks[@]}"; do
     printf '  %d) %s\n' "$((i + 1))" "$(disk_description "${disks[$i]}")" >&2
@@ -1255,6 +1264,7 @@ run_install() {
   require_commands awk blkid btrfs cachyos-rate-mirrors efibootmgr findmnt genfstab lsblk mkfs.btrfs mkfs.fat mkswap pacman pacstrap parted partprobe readlink sed swapon udevadm wipefs arch-chroot
   require_uefi
   init_tui
+  announce_interaction_mode
   tui_msg "CachyOS installer" "This installer performs a destructive fresh install.\n\nIt creates one large Btrfs capacity pool. Extra disks add capacity, not data redundancy. If any pool disk fails, data may be lost.\n\nKeep backups on separate storage."
   select_disks
   collect_swap_policy
