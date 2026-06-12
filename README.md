@@ -57,6 +57,10 @@ possible:
 
 If no Desktop folder is available, logs go to `/tmp`.
 
+The guided installer uses `dialog` or `whiptail` for terminal menus. If neither
+is available, it tries to install the small `dialog` package into the temporary
+live environment before falling back to numbered prompts.
+
 ## What The Installer Asks
 
 - Which disk should contain `/boot`.

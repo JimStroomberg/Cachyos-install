@@ -54,6 +54,10 @@ Guided install with plain prompts instead of `dialog` or `whiptail`:
 sudo bash scripts/install-cachyos.sh --install --no-tui
 ```
 
+By default, `--install` uses `dialog` or `whiptail` for terminal menus. If both
+are missing, the installer tries to install `dialog` into the temporary live
+environment with pacman. If that fails, it falls back to numbered prompts.
+
 Show help:
 
 ```bash

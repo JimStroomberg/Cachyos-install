@@ -409,6 +409,20 @@ init_tui() {
   fi
 }
 
+ensure_tui_backend() {
+  init_tui
+  if [[ -n "$TUI_CMD" || "$NO_TUI" -eq 1 ]]; then
+    return
+  fi
+
+  log "No dialog or whiptail menu tool found. Trying to install dialog in the live environment."
+  if pacman -Sy --needed --noconfirm dialog; then
+    init_tui
+  else
+    warn "Could not install dialog. Falling back to numbered prompts."
+  fi
+}
+
 announce_interaction_mode() {
   if [[ -n "$TUI_CMD" ]]; then
     log "Using $TUI_CMD for guided terminal menus."
@@ -1263,7 +1277,7 @@ run_install() {
   require_tty
   require_commands awk blkid btrfs cachyos-rate-mirrors efibootmgr findmnt genfstab lsblk mkfs.btrfs mkfs.fat mkswap pacman pacstrap parted partprobe readlink sed swapon udevadm wipefs arch-chroot
   require_uefi
-  init_tui
+  ensure_tui_backend
   announce_interaction_mode
   tui_msg "CachyOS installer" "This installer performs a destructive fresh install.\n\nIt creates one large Btrfs capacity pool. Extra disks add capacity, not data redundancy. If any pool disk fails, data may be lost.\n\nKeep backups on separate storage."
   select_disks
