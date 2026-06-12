@@ -27,6 +27,31 @@ run_as_root() {
   fi
 }
 
+run_command_as_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+ensure_dialog() {
+  if command -v dialog >/dev/null 2>&1; then
+    log "dialog is already available for guided menus"
+    return
+  fi
+
+  if ! command -v pacman >/dev/null 2>&1; then
+    warn "pacman is unavailable; guided menus may fall back to plain numbered prompts."
+    return
+  fi
+
+  log "Installing dialog in the temporary live environment"
+  if ! run_command_as_root pacman -Sy --needed --noconfirm dialog; then
+    warn "Could not install dialog; the installer will fall back if needed."
+  fi
+}
+
 local_installer() {
   local script_dir repo_dir candidate
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 0
@@ -76,6 +101,8 @@ EOF
   fi
 
   [[ -f "$installer" ]] || die "Installer script was not found: $installer"
+
+  ensure_dialog
 
   log "Running preflight report"
   run_as_root "$installer" --preflight

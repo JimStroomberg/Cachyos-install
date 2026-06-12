@@ -418,7 +418,7 @@ ensure_tui_backend() {
     return
   fi
 
-  log "Trying to ensure dialog is available for guided terminal menus."
+  log "Installing dialog in the temporary live environment for guided terminal menus."
   if pacman -Sy --needed --noconfirm dialog; then
     init_tui
   else
