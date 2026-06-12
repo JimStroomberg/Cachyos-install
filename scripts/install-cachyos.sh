@@ -554,6 +554,7 @@ self_test() {
   [[ "$(swap_per_disk_mib 32768 2)" == "16384" ]] || failed=1
   [[ "$(swap_per_disk_mib 32768 3)" == "10922" ]] || failed=1
   [[ "$(swap_per_disk_mib 0 3)" == "0" ]] || failed=1
+  [[ "$(printf '%s\n' "/dev/zram0 disk" "/dev/nvme0n1 disk" | awk '$2 == "disk" && $1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" {print $1}')" == "/dev/nvme0n1" ]] || failed=1
 
   if ((failed)); then
     die "Self-test failed."
@@ -563,6 +564,16 @@ self_test() {
 
 disk_type() {
   lsblk -dnpo TYPE "$1" 2>/dev/null | awk 'NR == 1 {print $1}'
+}
+
+is_install_candidate_disk() {
+  local disk="$1"
+  case "$disk" in
+    /dev/zram*|/dev/loop*|/dev/ram*|/dev/fd*|/dev/sr*|/dev/dm-*)
+      return 1
+      ;;
+  esac
+  [[ "$(disk_type "$disk")" == "disk" ]]
 }
 
 real_disk() {
@@ -582,7 +593,7 @@ partition_path() {
 }
 
 available_disk_names() {
-  lsblk -dpno NAME,TYPE 2>/dev/null | awk '$2 == "disk" {print $1}'
+  lsblk -dpno NAME,TYPE 2>/dev/null | awk '$2 == "disk" && $1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" {print $1}'
 }
 
 disk_description() {
@@ -594,7 +605,7 @@ disk_description() {
 
 print_disks() {
   if command -v lsblk >/dev/null 2>&1; then
-    lsblk -dpno NAME,SIZE,MODEL,SERIAL,TYPE | sed -n '/ disk$/p'
+    lsblk -dpno NAME,SIZE,MODEL,SERIAL,TYPE | awk '$1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" && $NF == "disk"'
   else
     warn "lsblk is not available."
   fi
@@ -699,7 +710,7 @@ dedupe_selected_disks() {
   for disk in "$@"; do
     [[ -z "$disk" ]] && continue
     real="$(real_disk "$disk")"
-    [[ "$(disk_type "$real")" == "disk" ]] || die "$real is not a whole disk."
+    is_install_candidate_disk "$real" || die "$real is not a supported install target disk."
     if [[ -z "${seen[$real]:-}" ]]; then
       seen[$real]=1
       deduped+=("$real")
@@ -1009,8 +1020,7 @@ mount_target() {
   done
 }
 
-install_packages() {
-  log "Installing CachyOS package baseline and KDE Plasma"
+pacstrap_target() {
   pacstrap -K "$TARGET_MOUNT" \
     "${BASE_PACKAGES[@]}" \
     "${COMMON_PACKAGES[@]}" \
@@ -1018,6 +1028,16 @@ install_packages() {
     "${GAMING_PACKAGES[@]}" \
     "${FAUGUS_DEPENDENCY_PACKAGES[@]}" \
     "${KDE_PACKAGES[@]}"
+}
+
+install_packages() {
+  log "Installing CachyOS package baseline and KDE Plasma"
+  if ! pacstrap_target; then
+    warn "pacstrap failed. Re-ranking mirrors, refreshing package databases, and retrying once."
+    cachyos-rate-mirrors || warn "Mirror ranking failed before pacstrap retry."
+    pacman -Syy --noconfirm || warn "Package database refresh failed before pacstrap retry."
+    pacstrap_target
+  fi
 }
 
 copy_pacman_configuration() {
