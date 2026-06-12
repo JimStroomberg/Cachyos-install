@@ -410,17 +410,13 @@ init_tui() {
 }
 
 run_tui() {
-  "$TUI_CMD" "$@" 3>&1 1>/dev/tty 2>&3
+  "$TUI_CMD" "$@" < /dev/tty 3>&1 1>/dev/tty 2>&3
 }
 
 tui_msg() {
   local title="$1"
   local message="$2"
-  if [[ -n "$TUI_CMD" ]]; then
-    run_tui --title "$title" --msgbox "$message" 20 78 || true
-  else
-    printf '\n%s\n%s\n' "$title" "$message" >&2
-  fi
+  printf '\n%s\n%s\n' "$title" "$message" >&2
 }
 
 prompt_default() {
