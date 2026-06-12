@@ -441,7 +441,11 @@ run_tui() {
 tui_msg() {
   local title="$1"
   local message="$2"
-  printf '\n%s\n%s\n' "$title" "$message" >&2
+  if [[ "$TUI_CMD" == "dialog" ]]; then
+    run_tui --title "$title" --msgbox "$message" 20 78 || die "Prompt cancelled."
+  else
+    printf '\n%s\n%s\n' "$title" "$message" >&2
+  fi
 }
 
 prompt_default() {
