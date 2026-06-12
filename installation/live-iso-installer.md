@@ -1,74 +1,145 @@
-# Live ISO Installer Script
+# Live ISO Installer
 
-The install script is:
+The live ISO installer is:
 
 ```text
 scripts/install-cachyos.sh
 ```
 
-It is intended to be run from a CachyOS live ISO booted in UEFI mode.
+The beginner entrypoint is:
 
-## GitHub Command
+```text
+scripts/bootstrap.sh
+```
 
-From the CachyOS live ISO, the flow should be:
+Run both from a CachyOS live ISO booted in UEFI mode.
 
-1. Open a browser in the live environment.
-2. Navigate to the repository.
-3. Copy the raw install command.
-4. Paste it into a terminal.
+## Recommended Beginner Flow
+
+From the live environment:
+
+1. Connect to the internet.
+2. Open a terminal.
+3. Run the bootstrap command.
+4. Review the preflight report.
+5. Continue into the guided installer only if the report looks reasonable.
 
 Command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/install-cachyos.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/bootstrap.sh | bash
 ```
 
-## What The Script Does
+The bootstrap script downloads the repository with `git` when possible. If
+`git` is unavailable or cloning fails, it downloads the installer script
+directly with `curl`.
 
-- Verifies the ISO is booted in UEFI mode.
-- Lists disks and `/dev/disk/by-id/` candidates.
-- Suggests likely Samsung 980 Pro NVMe targets.
-- Prompts for the two target disks.
-- Requires the exact destructive confirmation phrase `WIPE AND INSTALL`.
-- Wipes and repartitions both selected disks.
-- Creates the target `/boot`, swap, and multi-device Btrfs layout.
-- Creates CachyOS default Btrfs subvolumes.
-- Installs the CachyOS package baseline, KDE Plasma, Firefox, Steam, AMD
-  Vulkan support, Wine tooling, Gamescope, MangoHud, and Faugus Launcher
-  dependencies.
-- Copies the CachyOS live ISO pacman repository configuration into the target
-  system and ensures `multilib` is enabled.
-- Adds the Flathub Flatpak remote.
-- Configures timezone, locales, hostname, user, sudo, services, and Limine.
-- Saves full output to a timestamped log on the live environment Desktop.
-- Prints verification output before reboot.
+## Installer Modes
 
-## User Inputs
+Non-destructive preflight:
 
-The script asks for:
+```bash
+sudo bash scripts/install-cachyos.sh --preflight
+```
 
-- Disk 1.
-- Disk 2.
-- Hostname.
-- Primary username.
-- Root password.
-- User password.
-- Destructive confirmation.
+Guided destructive install:
 
-## Current Status
+```bash
+sudo bash scripts/install-cachyos.sh --install
+```
 
-The base installer has completed successfully on the target hardware. The
-expanded gaming package baseline still needs a fresh full-run validation.
+Guided install with plain prompts instead of `dialog` or `whiptail`:
 
-Secure Boot is intentionally not configured by this script. See:
+```bash
+sudo bash scripts/install-cachyos.sh --install --no-tui
+```
 
-```text
-installation/post-install-secure-boot.md
+Show help:
+
+```bash
+bash scripts/install-cachyos.sh --help
+```
+
+Run calculation checks:
+
+```bash
+bash scripts/install-cachyos.sh --self-test
+```
+
+## Preflight Report
+
+The preflight mode checks:
+
+- root status
+- interactive terminal availability
+- operating system identity
+- UEFI boot state
+- EFI variable access
+- Secure Boot state
+- RAM size
+- GPU inventory
+- network reachability
+- pacman configuration
+- available TUI tool
+- required installer commands
+- disk inventory
+- stable disk identifiers
+
+Preflight is informational. The destructive installer still performs hard-stop
+checks before making changes.
+
+## Guided Disk Model
+
+The installer now supports one or more selected disks:
+
+- The first selected disk is the boot disk.
+- The boot disk gets a 4096 MiB FAT32 `/boot` partition.
+- All selected disks contribute one Btrfs member partition.
+- Optional swap partitions can be spread across all selected disks.
+- Btrfs data is always `single`.
+- Btrfs metadata/system is `dup` on one disk and `raid1` on two or more disks.
+
+This is a capacity pool, not a redundant data pool. More disks mean more local
+storage, but one failed pool disk can still cause data loss.
+
+## Swap Choices
+
+The installer offers:
+
+- recommended swap
+- no disk swap
+- custom total disk swap
+
+Recommended swap equals installed RAM rounded up to GiB, split evenly across
+the selected disks. Disk swap uses low priority. CachyOS ZRAM remains the
+preferred swap layer.
+
+Hibernate is not configured.
+
+## What The Script Installs
+
+- CachyOS base packages and Limine tooling
+- KDE Plasma desktop packages
+- Firefox
+- Flatpak and Flathub
+- Steam and Steam device rules
+- AMD Mesa/Vulkan packages, including 32-bit Vulkan support
+- Gamescope
+- MangoHud and GOverlay
+- Wine, Wine Mono, Wine Gecko, Winetricks, Protontricks
+- UMU Launcher
+- Faugus Launcher dependencies
+- `paru` for AUR packages
+
+Faugus Launcher itself remains a post-install AUR step:
+
+```bash
+paru -S faugus-launcher
 ```
 
 ## Logging
 
-Each run writes a full log to the live environment Desktop:
+Each run writes a full log to the live environment Desktop when possible:
 
 ```text
 ~/Desktop/cachyos-install-YYYYmmdd-HHMMSS.log
@@ -76,13 +147,14 @@ Each run writes a full log to the live environment Desktop:
 
 If no live user Desktop can be found, the script falls back to `/tmp`.
 
-## Faugus Launcher
+## Current Status
 
-The script installs the dependencies and AUR tooling needed for Faugus Launcher,
-but it does not automatically build AUR packages during installation.
+The original fixed two-disk installer completed successfully on target
+hardware. The beginner-friendly multi-disk refactor still needs validation from
+a real CachyOS live ISO and disposable destructive test environments.
 
-After first boot:
+Secure Boot is intentionally not configured by this script. See:
 
-```bash
-paru -S faugus-launcher
+```text
+installation/post-install-secure-boot.md
 ```

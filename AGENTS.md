@@ -1,14 +1,42 @@
 
 
 # AGENTS.md
+## Tools
+use Context7
+
 
 ## Project Overview
 
-This project documents and validates a future migration from Bazzite to CachyOS on a personal gaming PC.
+This project documents and validates a beginner-friendly CachyOS installer for
+gaming PCs.
 
-The goal is not to create a highly available workstation or server. The primary objective is a simple, performant, supportable CachyOS installation that follows upstream recommendations wherever practical.
+The original scope was a personal migration from Bazzite to CachyOS. The current
+direction is broader: make the repo safe and understandable enough that the
+owner can give the URL to a friend or enthusiast who can create a live USB, boot
+it, open a terminal, and follow prompts.
 
-## Target Hardware
+The goal is not to create a highly available workstation or server. The primary
+objective is a simple, performant, supportable CachyOS installation that follows
+upstream recommendations wherever practical.
+
+## Target Audience
+
+Primary users:
+
+- Beginners or enthusiasts with basic live USB knowledge.
+- AMD-oriented gaming desktop users.
+- Users who want one large local Btrfs storage pool.
+- Users who understand, after being warned, that local storage is not a backup.
+
+Out of scope for v1:
+
+- Dual-boot resizing or preserving existing operating systems.
+- Full-disk encryption.
+- NVIDIA-specific driver tuning.
+- Secure Boot during the base install.
+- Hibernate configuration.
+
+## Reference Hardware
 
 CPU:
 - AMD Ryzen 7 5800X3D
@@ -26,42 +54,60 @@ Topology:
 - NVMe1 connected directly to CPU PCIe lanes
 - NVMe2 connected through chipset/southbridge
 
+This hardware remains the main real-machine validation target, but the installer
+is no longer hard-coded to exactly two disks.
+
 ## Design Decisions Already Made
 
 ### Storage
 
-The preferred Btrfs configuration is:
+The preferred Btrfs model is a capacity pool:
 
 ```text
 Data: single
-Metadata: RAID1
-System: RAID1
+Metadata/System:
+  one selected disk: dup
+  two or more selected disks: raid1
 ```
 
 Reasoning:
 
-- Matches the default Bazzite/Fedora implementation.
-- Maximizes usable capacity (~4 TB).
-- Avoids RAID0 complexity and failure characteristics.
-- Provides metadata redundancy.
-- Considered sufficiently reliable for a gaming PC.
+- Gives users one big local volume.
+- Lets every selected disk add usable capacity.
+- Avoids RAID0 terminology and failure-characteristic confusion.
+- Adds metadata redundancy where practical.
+- Keeps the warning simple: extra disks add capacity, not data protection.
+
+Important user-facing warning:
+
+```text
+If any disk in the Btrfs pool fails, data in the pool may be lost.
+Back up important files somewhere else.
+```
 
 ### Swap
 
-Planned layout:
+The installer should offer:
 
 ```text
-Disk 1
-- Swap 16 GB
-
-Disk 2
-- Swap 16 GB
+recommended disk swap
+no disk swap
+custom total disk swap
 ```
 
-Total swap:
+Default recommendation:
 
 ```text
-32 GB
+total disk swap = installed RAM rounded up to GiB
+swap per disk   = total disk swap / selected disk count
+priority        = 10
+```
+
+Example:
+
+```text
+32 GiB RAM, 2 selected disks -> about 16 GiB swap per disk
+32 GiB RAM, 3 selected disks -> about 10.6 GiB swap per disk
 ```
 
 Reasoning:
@@ -96,89 +142,91 @@ OOM Killer
 
 Reasoning:
 
-- System has 32 GB RAM.
 - CachyOS uses ZRAM by default.
-- Staying with the CachyOS default is more supportable than a custom 8 GB override.
+- Staying with the CachyOS default is more supportable than a custom override.
 - SSD swap remains available as the lower-priority fallback.
 
-## Bootloader Investigation
+## Bootloader
 
-Initial work assumed systemd-boot.
-
-This assumption is now considered obsolete.
+Use Limine, not systemd-boot.
 
 Current understanding:
 
 - CachyOS uses Limine by default.
-- Current CachyOS documentation recommends a FAT32 `/boot` partition of at least 4 GB.
+- Current CachyOS documentation recommends a FAT32 `/boot` partition of at
+  least 4 GiB.
 
 Current preferred design:
 
 ```text
-Disk 1
+Boot disk
 - /boot (FAT32, 4096 MiB, ESP/boot flag)
-- Swap (16 GB)
+- optional swap
 - Btrfs
 
-Disk 2
-- Swap (16 GB)
+Additional selected disks
+- optional swap
 - Btrfs
 ```
 
 There is no separate `/boot/efi` partition in the target Limine layout.
 
-## Finalized Target Configuration
+## Current Implementation
 
-The current target state is documented in:
-
-```text
-installation/target-configuration.md
-```
-
-Post-install Secure Boot work is tracked separately in:
+Beginner entrypoint:
 
 ```text
-installation/post-install-secure-boot.md
+scripts/bootstrap.sh
 ```
 
-The first-pass live ISO installer script is tracked in:
+Installer:
 
 ```text
 scripts/install-cachyos.sh
-installation/live-iso-installer.md
 ```
 
-Key updates from the earlier draft:
+Installer modes:
 
-- Use Limine, not systemd-boot.
-- Mount the FAT32 boot partition directly at `/boot`.
-- Use CachyOS's default Btrfs subvolumes: `@`, `@home`, `@root`, `@srv`, `@cache`, `@tmp`, `@log`.
-- Do not create a custom `@games` subvolume in the baseline.
-- Use CachyOS-style Btrfs mount options: `defaults,noatime,compress=zstd,commit=120`.
-- Keep CachyOS's default ZRAM behavior from `cachyos-settings`.
-- Keep Secure Boot disabled during the base install; enable it only as a separate post-install step.
-- Include a gaming-ready baseline with Steam, AMD Vulkan/32-bit Vulkan support, Wine tooling, Gamescope, MangoHud, Flatpak, Firefox, and Faugus Launcher dependencies.
+```text
+--preflight
+--install
+--install --no-tui
+--self-test
+--help
+```
 
-## Outstanding Work
+Documentation:
 
-Before this documentation is considered production-ready:
+```text
+README.md
+installation/target-configuration.md
+installation/live-iso-installer.md
+installation/post-install-secure-boot.md
+```
 
-1. Validate the expanded gaming package baseline in a fresh install.
-2. Install Faugus Launcher after first boot with `paru -S faugus-launcher`.
-3. Capture post-install verification output from the real machine after the expanded profile is validated.
-4. Keep Secure Boot as a post-install step after the base install is verified.
+Key behavior:
+
+- Bootstrap runs preflight before install.
+- TUI uses `dialog` or `whiptail` when available.
+- Plain Bash prompts are the fallback.
+- The installer supports one or more selected disks.
+- The first selected disk receives `/boot`.
+- Every selected disk contributes to the Btrfs capacity pool.
+- Secure Boot remains disabled during the base install.
 
 ## Important Context
 
 The owner of this system does not consider local storage authoritative.
 
-Important files are stored on network-backed storage that is independently backed up.
+Important files are stored on network-backed storage that is independently
+backed up.
 
 Therefore:
 
 - Simplicity is preferred over maximum redundancy.
 - Reinstallability is preferred over complex recovery procedures.
 - Following the supported CachyOS stack is preferred over custom engineering.
+- Beginner-facing warnings must be direct and hard to miss.
 
 Priority order:
 
@@ -188,7 +236,23 @@ Priority order:
 4. Easy to reinstall
 5. Redundant
 
+## Outstanding Work
+
+Before this documentation and installer are considered production-ready for
+friends or other enthusiasts:
+
+1. Run `scripts/install-cachyos.sh --preflight` from a real CachyOS live ISO.
+2. Validate one-disk, two-disk, and three-disk destructive installs in disposable
+   environments.
+3. Validate the expanded gaming package baseline in a fresh install.
+4. Install Faugus Launcher after first boot with `paru -S faugus-launcher`.
+5. Capture post-install verification output from the real machine.
+6. Keep Secure Boot as a post-install step after the base install is verified.
+
 ## Recommended Next Step
 
-Validate `scripts/install-cachyos.sh` from a CachyOS live ISO or a close
-disposable test environment before using it on the real machine.
+Validate the new bootstrap and preflight flow from a CachyOS live ISO:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/bootstrap.sh | bash
+```

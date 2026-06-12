@@ -1,134 +1,159 @@
-# CachyOS Gaming PC Install
+# CachyOS Gaming PC Installer
 
-This repository documents and automates a fresh CachyOS installation for a
-personal gaming PC currently planned as a migration from Bazzite.
+This repository provides a guided CachyOS installer for beginner-to-intermediate
+users who want a gaming-ready KDE desktop with a larger Btrfs storage pool than
+the standard GUI installer usually exposes.
 
-The goal is a simple, performant, supportable install that stays close to the
-current CachyOS Desktop defaults while using a two-NVMe multi-device Btrfs
-layout.
+The target audience is someone who can create a CachyOS live USB, boot it in
+UEFI mode, open a terminal, and follow prompts carefully.
 
-## Target System
+## Read This First
 
-- CPU: AMD Ryzen 7 5800X3D
-- Memory: 32 GB RAM
-- GPU: AMD Radeon RX 6900 XT
-- Storage: 2x Samsung 980 Pro 2 TB NVMe SSDs
-- Desktop: KDE Plasma
+This is a destructive fresh-install tool.
+
+- It wipes every disk you select.
+- It does not preserve Windows, Linux, recovery partitions, or game libraries.
+- Extra disks add storage capacity, not data redundancy.
+- If any disk in the Btrfs pool dies, data in the pool may be lost.
+- Important files must already be backed up somewhere else.
+
+The installer is designed for AMD-oriented gaming desktops and keeps close to
+CachyOS defaults where practical:
+
 - Boot mode: UEFI
 - Bootloader: Limine
-- Filesystem: Btrfs across both NVMe SSDs
-- Primary game launchers: Steam and Faugus Launcher
+- Desktop: KDE Plasma
+- Filesystem: Btrfs
+- Boot partition: FAT32 `/boot`, 4096 MiB, on the first selected disk
+- Btrfs data profile: `single`
+- Btrfs metadata/system profile: `dup` on one disk, `raid1` on two or more disks
+- ZRAM: CachyOS default behavior from `cachyos-settings`
+- Gaming baseline: Steam, AMD Vulkan, 32-bit Vulkan, Wine tooling, Gamescope,
+  MangoHud, Flatpak, Firefox, UMU Launcher, and Faugus Launcher dependencies
 
-## Target Layout
+## Quick Start
 
-Disk 1:
-
-```text
-/boot  FAT32  4096 MiB
-swap   16 GiB
-Btrfs  remaining space
-```
-
-Disk 2:
-
-```text
-swap   16 GiB
-Btrfs  remaining space
-```
-
-Btrfs profile:
-
-```text
-Data:     single
-Metadata: RAID1
-System:   RAID1
-```
-
-This maximizes local usable capacity while mirroring Btrfs metadata. Local
-storage is not treated as authoritative; important data is expected to live on
-separately backed-up network storage.
-
-## Installer Script
-
-The live ISO installer is:
-
-```text
-scripts/install-cachyos.sh
-```
-
-It is a destructive fresh-install script intended to run from a CachyOS live ISO
-booted in UEFI mode.
-
-From the CachyOS live ISO, run:
+Boot the CachyOS live USB in UEFI mode, connect to the internet, open a
+terminal, then run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/install-cachyos.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/bootstrap.sh | bash
 ```
 
-The script prompts for the target disks, hostname, username, passwords, and a
-destructive confirmation phrase before wiping anything.
+The bootstrap script:
 
-Each run writes a full timestamped log to the live environment Desktop so it can
-be uploaded or copied to USB if debugging is needed.
+1. Shows the project URL.
+2. Downloads or locates the installer.
+3. Runs a non-destructive preflight report.
+4. Waits for you to review the report.
+5. Starts the guided destructive installer.
 
-The default install now includes a gaming-ready baseline:
+The installer writes a timestamped log to the live environment Desktop when
+possible:
 
-- Firefox
-- Steam and Steam device rules
-- AMD Mesa/Vulkan packages, including 32-bit Vulkan support
-- Gamescope
-- MangoHud and GOverlay
-- Wine, Wine Mono, Wine Gecko, Winetricks, Protontricks
-- UMU Launcher
-- Flatpak with Flathub enabled
-- Faugus Launcher build/runtime dependencies
-- `paru` for AUR packages
+```text
+~/Desktop/cachyos-install-YYYYmmdd-HHMMSS.log
+```
 
-Faugus Launcher itself is an AUR package. After first boot, install it with:
+If no Desktop folder is available, logs go to `/tmp`.
+
+## What The Installer Asks
+
+- Which disk should contain `/boot`.
+- Which additional disks should join the Btrfs capacity pool.
+- Whether to create disk swap partitions.
+- Hostname.
+- Primary username.
+- Timezone.
+- Root password.
+- User password.
+- Final typed confirmation: `WIPE AND INSTALL`.
+
+The default disk swap recommendation is total swap equal to installed RAM,
+split evenly across the selected disks. For example, a 32 GiB RAM system with
+two selected disks gets about 16 GiB swap per disk. CachyOS ZRAM remains the
+preferred swap layer; disk swap is only the lower-priority fallback.
+
+## Before You Wipe Anything
+
+Check these before continuing past the final confirmation:
+
+- You booted the USB in UEFI mode.
+- Secure Boot is disabled for the base install.
+- The disks shown in the summary are the disks you intend to erase.
+- Anything important is backed up outside this machine.
+- You understand that the Btrfs pool is capacity-focused, not redundant.
+- You saved or can access the installer log if debugging is needed.
+
+## What This Does Not Do
+
+The v1 installer warns but does not implement:
+
+- Dual-boot resizing or preserving existing operating systems.
+- Full-disk encryption.
+- NVIDIA-specific driver tuning.
+- Secure Boot setup during the base install.
+- Hibernate configuration.
+- Local data backup.
+
+Secure Boot is intentionally handled after the installed system has booted
+successfully. See
+[installation/post-install-secure-boot.md](installation/post-install-secure-boot.md).
+
+## Manual Commands
+
+Run only the preflight report:
 
 ```bash
-paru -S faugus-launcher
+curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/install-cachyos.sh | sudo bash -s -- --preflight
 ```
 
-## Safety Status
+Run the guided installer directly:
 
-Current status: hardware-tested automation.
+```bash
+curl -fsSL https://raw.githubusercontent.com/JimStroomberg/Cachyos-install/main/scripts/install-cachyos.sh | sudo bash -s -- --install
+```
 
-Verified so far:
+Force plain prompts instead of `dialog` or `whiptail`:
 
-- The target configuration has been checked against current CachyOS wiki pages
-  and CachyOS Calamares Limine configuration.
-- The installer script passes Bash syntax validation.
-- The installer has completed successfully on the target hardware.
-- The installed system has booted from the internal NVMe.
-- Post-install Secure Boot has been enabled successfully after correcting
-  firmware boot order to prefer the signed Limine entry.
-
-Not yet verified:
-
-- The expanded gaming package baseline has not yet been run through a fresh
-  hardware install.
-- Native Faugus Launcher AUR installation remains a post-install step.
+```bash
+sudo bash scripts/install-cachyos.sh --install --no-tui
+```
 
 ## Documentation
 
-- [Target configuration](installation/target-configuration.md)
 - [Live ISO installer usage](installation/live-iso-installer.md)
+- [Target configuration](installation/target-configuration.md)
 - [Post-install Secure Boot](installation/post-install-secure-boot.md)
 - [Agent/project context](AGENTS.md)
 
-## Secure Boot
+## Safety Status
 
-Secure Boot is intentionally not configured by the base install script.
+Current status: installer-product refactor in progress.
 
-CachyOS recommends installing with Secure Boot disabled. For this Limine-based
-target, Secure Boot is tracked separately in
-[installation/post-install-secure-boot.md](installation/post-install-secure-boot.md).
+Verified in this repo:
+
+- Bash syntax validation.
+- Installer calculation self-test.
+- Beginner-facing preflight/install modes.
+- Bootstrap entrypoint.
+- GitHub Actions static-check workflow.
+
+Still required before recommending this to other people:
+
+- Run `--preflight` from a real CachyOS live ISO.
+- Run a disposable VM or loop-device install matrix for one, two, and three
+  selected disks.
+- Perform a fresh hardware install with the expanded beginner flow.
+- Capture sanitized verification output from the real machine.
 
 ## Repository Layout
 
 ```text
 .
+├── .github/
+│   └── workflows/
+│       └── static-checks.yml
 ├── AGENTS.md
 ├── README.md
 ├── installation/
@@ -136,5 +161,6 @@ target, Secure Boot is tracked separately in
 │   ├── post-install-secure-boot.md
 │   └── target-configuration.md
 └── scripts/
+    ├── bootstrap.sh
     └── install-cachyos.sh
 ```

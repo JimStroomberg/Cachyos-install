@@ -1,19 +1,20 @@
 # Target CachyOS Configuration
 
-This document defines the installation state we want the future live-ISO
-automation script to produce.
+This document defines the target state for the beginner-friendly live ISO
+installer.
 
-The priority is to stay as close as practical to a supported CachyOS Desktop
-installation while keeping the selected two-NVMe Btrfs layout.
+The priority is to stay close to a supported CachyOS Desktop installation while
+offering an advanced but understandable Btrfs capacity-pool layout.
 
-Verified against upstream sources on 2026-06-11.
+Verified against upstream sources on 2026-06-11. Re-check upstream CachyOS
+installer, Limine, and Secure Boot documentation before a production release.
 
 ## Installation Model
 
 - Boot mode: UEFI only.
-- Partitioning mode: manual/scripted GPT partitioning.
+- Partitioning mode: guided/scripted GPT partitioning.
 - Boot manager: Limine.
-- Root filesystem: multi-device Btrfs.
+- Root filesystem: Btrfs on one or more selected disks.
 - Desktop profile: KDE Plasma.
 - Gaming profile: Steam-ready AMD/Vulkan desktop with Faugus Launcher dependencies.
 - Initramfs path: CachyOS mkinitcpio/Limine tooling.
@@ -21,10 +22,10 @@ Verified against upstream sources on 2026-06-11.
 - Secure Boot: disabled during installation.
 - Hibernate: not configured.
 
-The future script should be run from the CachyOS live ISO, after confirming the
-machine is booted in UEFI mode.
+Run the installer from the CachyOS live ISO after confirming the machine is
+booted in UEFI mode.
 
-The current first-pass script is documented in:
+Installer usage is documented in:
 
 ```text
 installation/live-iso-installer.md
@@ -38,7 +39,7 @@ installation/post-install-secure-boot.md
 
 ## Firmware Preconditions
 
-- Disable Secure Boot.
+- Disable Secure Boot for the base install.
 - Disable CSM/Legacy boot.
 - Boot the CachyOS ISO in UEFI mode.
 - Confirm EFI variables are available:
@@ -52,32 +53,58 @@ mode and installation must stop.
 
 ## Disk Selection
 
-Target hardware:
+The installer must not blindly trust device names such as `/dev/nvme0n1`.
 
-- Disk 1: Samsung 980 Pro 2 TB NVMe connected to CPU PCIe lanes.
-- Disk 2: Samsung 980 Pro 2 TB NVMe connected through chipset/southbridge.
+It should show:
 
-The final script must not blindly trust `/dev/nvme0n1` and `/dev/nvme1n1`.
-It should show `/dev/disk/by-id/` candidates and require explicit selection or
-preconfigured by-id paths.
+- `lsblk` disk inventory
+- `/dev/disk/by-id/` candidates
+- disk size, model, serial, existing filesystems, labels, and mountpoints before
+  final confirmation
+
+The user selects:
+
+1. One boot disk.
+2. Zero or more additional disks for the Btrfs capacity pool.
+
+Every selected disk is wiped.
 
 ## Partition Layout
 
-### Disk 1
+### Boot Disk
+
+With disk swap enabled:
 
 ```text
 GPT
 1. /boot  4096 MiB  FAT32  GPT type EF00 / ESP flag
-2. swap   16384 MiB Linux swap
+2. swap   chosen size Linux swap
 3. root   remaining Btrfs member
 ```
 
-### Disk 2
+With no disk swap:
 
 ```text
 GPT
-1. swap   16384 MiB Linux swap
+1. /boot  4096 MiB  FAT32  GPT type EF00 / ESP flag
 2. root   remaining Btrfs member
+```
+
+### Additional Pool Disks
+
+With disk swap enabled:
+
+```text
+GPT
+1. swap   chosen size Linux swap
+2. root   remaining Btrfs member
+```
+
+With no disk swap:
+
+```text
+GPT
+1. root   remaining Btrfs member
 ```
 
 There is no separate `/boot/efi` partition. For Limine on CachyOS, the FAT32
@@ -85,24 +112,37 @@ boot partition is mounted directly at `/boot`.
 
 ## Btrfs Layout
 
-Create one multi-device Btrfs filesystem across the root partitions:
+Create one Btrfs filesystem across all selected root partitions.
 
-```bash
-mkfs.btrfs -f -d single -m raid1 <disk1-root-partition> <disk2-root-partition>
-```
-
-Target profile:
+Data profile:
 
 ```text
-Data:     single
-Metadata: RAID1
-System:   RAID1
+single
 ```
 
-This keeps approximately the full usable capacity of both drives while
-mirroring filesystem metadata. It does not make local data authoritative; a
-single disk failure can still lose file data because data blocks are not
-mirrored.
+Metadata/system profile:
+
+```text
+one selected disk:       dup
+two or more selected disks: raid1
+```
+
+Example one-disk command:
+
+```bash
+mkfs.btrfs -f -L cachyos -d single -m dup <root-partition>
+```
+
+Example multi-disk command:
+
+```bash
+mkfs.btrfs -f -L cachyos -d single -m raid1 <root-partition> <root-partition>...
+```
+
+This creates one large local capacity pool. It does not make local data
+authoritative. Extra disks add capacity, not data redundancy. If any selected
+pool disk fails, data in the filesystem may be lost because file data blocks
+are not mirrored.
 
 ## Btrfs Subvolumes
 
@@ -143,18 +183,25 @@ options.
 
 ## Swap And ZRAM
 
-Create and enable both swap partitions:
+The installer offers:
+
+- recommended disk swap
+- no disk swap
+- custom total disk swap
+
+Recommended disk swap:
 
 ```text
-Disk 1 swap: 16 GiB
-Disk 2 swap: 16 GiB
-Total SSD swap: 32 GiB
+total disk swap = installed RAM rounded up to GiB
+swap per disk   = total disk swap / selected disk count
+priority        = 10
 ```
 
-Both swap partitions should use the same low priority, for example:
+Example:
 
 ```text
-pri=10
+32 GiB RAM, 2 selected disks -> about 16 GiB swap per disk
+32 GiB RAM, 3 selected disks -> about 10.6 GiB swap per disk
 ```
 
 Keep CachyOS default ZRAM from `cachyos-settings`:
@@ -169,8 +216,9 @@ fs-type = swap
 
 This means ZRAM is preferred over SSD swap. SSD swap is only the fallback once
 RAM pressure exceeds what RAM and compressed ZRAM can absorb. Do not override
-ZRAM to a fixed 8 GiB size in the baseline, because that is less aligned with
-the supported CachyOS default.
+ZRAM to a fixed size in the baseline.
+
+Hibernate is not configured and should not be promised by the installer.
 
 ## Bootloader Target
 
