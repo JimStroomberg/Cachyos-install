@@ -418,6 +418,9 @@ ensure_tui_backend() {
     return
   fi
 
+  log "Configuring CachyOS mirrors before installing dialog."
+  cachyos-rate-mirrors || warn "Mirror ranking failed; dialog installation may fail."
+
   log "Installing dialog in the temporary live environment for guided terminal menus."
   if pacman -Sy --needed --noconfirm dialog; then
     init_tui

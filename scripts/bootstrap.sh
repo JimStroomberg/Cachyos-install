@@ -35,6 +35,19 @@ run_command_as_root() {
   fi
 }
 
+prepare_live_repositories() {
+  if command -v timedatectl >/dev/null 2>&1; then
+    run_command_as_root timedatectl set-ntp true || warn "Could not enable NTP in the live environment."
+  fi
+
+  if command -v cachyos-rate-mirrors >/dev/null 2>&1; then
+    log "Configuring CachyOS mirrors in the live environment"
+    run_command_as_root cachyos-rate-mirrors || warn "Mirror ranking failed; pacman may still be unable to install dialog."
+  else
+    warn "cachyos-rate-mirrors is unavailable; pacman may not have repository servers configured."
+  fi
+}
+
 ensure_dialog() {
   if command -v dialog >/dev/null 2>&1; then
     log "dialog is already available for guided menus"
@@ -45,6 +58,8 @@ ensure_dialog() {
     warn "pacman is unavailable; guided menus may fall back to plain numbered prompts."
     return
   fi
+
+  prepare_live_repositories
 
   log "Installing dialog in the temporary live environment"
   if ! run_command_as_root pacman -Sy --needed --noconfirm dialog; then
