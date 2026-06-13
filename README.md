@@ -73,6 +73,9 @@ live environment before falling back to `whiptail` or numbered prompts.
 - User password.
 - Final destructive confirmation.
 
+Password input is hidden. The installer tells users that no characters or
+asterisks will be shown while typing, but the keystrokes are still recorded.
+
 The default disk swap recommendation is total swap equal to installed RAM,
 split evenly across the selected disks. For example, a 32 GiB RAM system with
 two selected disks gets about 16 GiB swap per disk. CachyOS ZRAM remains the
@@ -85,6 +88,8 @@ Check these before continuing past the final confirmation:
 - You booted the USB in UEFI mode.
 - Secure Boot is disabled for the base install.
 - The disks shown in the summary are the disks you intend to erase.
+- USB disks are hidden from the target picker to avoid wiping the installer or
+  backup media.
 - Anything important is backed up outside this machine.
 - You understand that the Btrfs pool is capacity-focused, not redundant.
 - You saved or can access the installer log if debugging is needed.

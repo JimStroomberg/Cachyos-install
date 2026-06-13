@@ -99,6 +99,8 @@ The installer now supports one or more selected disks:
 - The first selected disk is the boot disk.
 - The boot disk gets a 4096 MiB FAT32 `/boot` partition.
 - All selected disks contribute one Btrfs member partition.
+- USB disks are excluded from the target list to avoid wiping installer or
+  backup media.
 - Optional swap partitions can be spread across all selected disks.
 - Btrfs data is always `single`.
 - Btrfs metadata/system is `dup` on one disk and `raid1` on two or more disks.

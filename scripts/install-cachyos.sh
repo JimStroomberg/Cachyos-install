@@ -488,14 +488,17 @@ prompt_required() {
 prompt_password() {
   local prompt="$1"
   local first second
+  local hidden_notice="Input is hidden. You will not see characters or asterisks while typing, but your keystrokes are being recorded."
   while true; do
     if [[ -n "$TUI_CMD" ]]; then
-      first="$(run_tui --passwordbox "$prompt" 10 70)" || die "Prompt cancelled."
-      second="$(run_tui --passwordbox "Confirm $prompt" 10 70)" || die "Prompt cancelled."
+      first="$(run_tui --passwordbox "$prompt\n\n$hidden_notice" 12 76)" || die "Prompt cancelled."
+      second="$(run_tui --passwordbox "Confirm $prompt\n\n$hidden_notice" 12 76)" || die "Prompt cancelled."
     else
+      printf '%s\n' "$hidden_notice" >&2
       printf '%s: ' "$prompt" >&2
       read -r -s first < /dev/tty
       printf '\n' >&2
+      printf '%s\n' "$hidden_notice" >&2
       printf 'Confirm %s: ' "$prompt" >&2
       read -r -s second < /dev/tty
       printf '\n' >&2
@@ -554,7 +557,7 @@ self_test() {
   [[ "$(swap_per_disk_mib 32768 2)" == "16384" ]] || failed=1
   [[ "$(swap_per_disk_mib 32768 3)" == "10922" ]] || failed=1
   [[ "$(swap_per_disk_mib 0 3)" == "0" ]] || failed=1
-  [[ "$(printf '%s\n' "/dev/zram0 disk" "/dev/nvme0n1 disk" | awk '$2 == "disk" && $1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" {print $1}')" == "/dev/nvme0n1" ]] || failed=1
+  [[ "$(printf '%s\n' "/dev/zram0 disk " "/dev/sda disk usb" "/dev/nvme0n1 disk nvme" | awk '$2 == "disk" && $1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" && $3 != "usb" {print $1}')" == "/dev/nvme0n1" ]] || failed=1
 
   if ((failed)); then
     die "Self-test failed."
@@ -566,6 +569,10 @@ disk_type() {
   lsblk -dnpo TYPE "$1" 2>/dev/null | awk 'NR == 1 {print $1}'
 }
 
+disk_transport() {
+  lsblk -dnpo TRAN "$1" 2>/dev/null | awk 'NR == 1 {print $1}'
+}
+
 is_install_candidate_disk() {
   local disk="$1"
   case "$disk" in
@@ -573,6 +580,7 @@ is_install_candidate_disk() {
       return 1
       ;;
   esac
+  [[ "$(disk_transport "$disk")" != "usb" ]] || return 1
   [[ "$(disk_type "$disk")" == "disk" ]]
 }
 
@@ -593,7 +601,7 @@ partition_path() {
 }
 
 available_disk_names() {
-  lsblk -dpno NAME,TYPE 2>/dev/null | awk '$2 == "disk" && $1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" {print $1}'
+  lsblk -dpno NAME,TYPE,TRAN 2>/dev/null | awk '$2 == "disk" && $1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" && $3 != "usb" {print $1}'
 }
 
 disk_description() {
@@ -605,7 +613,10 @@ disk_description() {
 
 print_disks() {
   if command -v lsblk >/dev/null 2>&1; then
-    lsblk -dpno NAME,SIZE,MODEL,SERIAL,TYPE | awk '$1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" && $NF == "disk"'
+    local disk
+    while IFS= read -r disk; do
+      lsblk -dpno NAME,SIZE,TRAN,MODEL,SERIAL,TYPE "$disk"
+    done < <(available_disk_names)
   else
     warn "lsblk is not available."
   fi
