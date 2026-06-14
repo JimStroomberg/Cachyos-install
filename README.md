@@ -56,6 +56,14 @@ possible:
 
 If no Desktop folder is available, logs go to `/tmp`.
 
+At the end of an install or real failure stop, the installer asks whether to
+upload the log to Jim's JLogger service. The default answer is yes, but the
+prompt is explicit. Uploaded logs may include hardware details, disk layout,
+package output, bootloader output, usernames, hostnames, device identifiers,
+and similar installation context. JLogger redacts obvious secrets before
+storage and keeps logs for about 14 days. When an upload succeeds, the
+installer prints a Debug ID to share when asking for help.
+
 The guided installer prefers `dialog` for terminal menus. If `dialog` is not
 available, it tries to install the small `dialog` package into the temporary
 live environment before falling back to `whiptail` or numbered prompts.
@@ -72,6 +80,7 @@ live environment before falling back to `whiptail` or numbered prompts.
 - User password.
 - Optional software bundles.
 - Final destructive confirmation.
+- Optional log upload after success or a real failure stop.
 
 Password input is hidden. The installer tells users that no characters or
 asterisks will be shown while typing, but the keystrokes are still recorded.

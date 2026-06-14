@@ -160,6 +160,19 @@ Each run writes a full log to the live environment Desktop when possible:
 
 If no live user Desktop can be found, the script falls back to `/tmp`.
 
+After a successful install or real failure stop, the installer asks whether to
+upload the log to Jim's JLogger service. The default answer is yes, but upload
+only happens after that dedicated prompt.
+
+Uploaded logs may include hardware details, disk layout, package output,
+bootloader output, usernames, hostnames, device identifiers, and similar
+installation context. JLogger redacts obvious secrets before storage and keeps
+logs for about 14 days.
+
+When upload succeeds, the installer prints a Debug ID. Share that ID when
+asking Jim for help. The installer does not print retrieval URLs, admin tokens,
+or cloud credentials.
+
 ## Current Status
 
 The original fixed two-disk installer completed successfully on target

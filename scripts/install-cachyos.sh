@@ -12,11 +12,14 @@ EXTRA_LOCALE="nl_NL.UTF-8"
 BOOT_SIZE_MIB=4096
 SWAP_PRIORITY=10
 REPO_URL="https://github.com/JimStroomberg/Cachyos-install"
+JLOGGER_UPLOAD_URL="https://jloggerfunctions24cai0vc-upload.functions.fnc.nl-ams.scw.cloud"
 
 MODE="install"
 NO_TUI=0
 TUI_CMD=""
 LOG_FILE=""
+INSTALL_CANCELLED=0
+TELEMETRY_ELIGIBLE=0
 
 declare -a SELECTED_DISKS=()
 declare -a ROOT_PARTS=()
@@ -321,7 +324,9 @@ warn() {
 }
 
 die() {
-  printf '\nERROR: %s\n' "$*" >&2
+  local message="$*"
+  is_cancel_message "$message" && INSTALL_CANCELLED=1
+  printf '\nERROR: %s\n' "$message" >&2
   exit 1
 }
 
@@ -398,6 +403,8 @@ on_exit() {
     printf '\n--- Last 80 log lines ---\n'
     tail -n 80 "$LOG_FILE" || true
   fi
+
+  maybe_upload_install_log "$status" || true
 }
 
 require_root() {
@@ -610,6 +617,115 @@ array_contains() {
   return 1
 }
 
+parse_jlogger_debug_id() {
+  sed -n 's/.*"debug_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+is_cancel_message() {
+  case "$1" in
+    *cancelled*|*Cancelled*|*canceled*|*Canceled*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+prompt_telemetry_upload() {
+  local answer
+
+  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+    warn "Could not prompt for telemetry upload because no interactive terminal is available."
+    return 1
+  fi
+
+  cat > /dev/tty <<EOF
+
+Optional installer telemetry
+============================
+
+This can upload the installer log to Jim's JLogger service for debugging and
+improving the installer.
+
+The log may include hardware details, disk layout, package output, bootloader
+output, usernames, hostnames, device identifiers, and similar installation
+context. The backend redacts obvious secrets before storage and keeps logs for
+about 14 days.
+
+EOF
+
+  while true; do
+    printf 'Upload this installer log now? [Y/n]: ' > /dev/tty
+    if ! read -r answer < /dev/tty; then
+      warn "Could not read telemetry upload answer."
+      return 1
+    fi
+    answer="${answer:-yes}"
+    case "$answer" in
+      y|Y|yes|YES|Yes) return 0 ;;
+      n|N|no|NO|No) return 1 ;;
+      *) printf 'Answer yes or no.\n' > /dev/tty ;;
+    esac
+  done
+}
+
+upload_install_log() {
+  local log_file="$1"
+  local response debug_id
+
+  [[ -f "$log_file" ]] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+
+  if command -v gzip >/dev/null 2>&1; then
+    if ! response="$(
+      gzip -c "$log_file" | curl -fsS -X POST "$JLOGGER_UPLOAD_URL" \
+        -H 'Content-Type: text/plain' \
+        -H 'Content-Encoding: gzip' \
+        --data-binary @-
+    )"; then
+      return 1
+    fi
+  else
+    if ! response="$(
+      curl -fsS -X POST "$JLOGGER_UPLOAD_URL" \
+        -H 'Content-Type: text/plain' \
+        --data-binary @"$log_file"
+    )"; then
+      return 1
+    fi
+  fi
+
+  debug_id="$(printf '%s\n' "$response" | parse_jlogger_debug_id)"
+  [[ -n "$debug_id" ]] || return 1
+
+  printf '\nUploaded redacted installer log. Debug ID: %s\n' "$debug_id"
+  printf 'Share this Debug ID when asking Jim for help.\n'
+}
+
+maybe_upload_install_log() {
+  local status="$1"
+
+  [[ "$MODE" == "install" ]] || return 0
+  [[ "$TELEMETRY_ELIGIBLE" -eq 1 ]] || return 0
+  [[ -n "${LOG_FILE:-}" && -f "$LOG_FILE" ]] || return 0
+
+  if [[ "$INSTALL_CANCELLED" -eq 1 || "$status" -eq 130 ]]; then
+    log "Skipping telemetry upload because the installer was cancelled."
+    return 0
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "Telemetry upload skipped because curl is not available."
+    return 0
+  fi
+
+  if ! prompt_telemetry_upload; then
+    log "Telemetry upload skipped."
+    return 0
+  fi
+
+  if ! upload_install_log "$LOG_FILE"; then
+    warn "Telemetry upload failed. The local log remains at: $LOG_FILE"
+  fi
+}
+
 self_test() {
   local failed=0
   [[ "$(metadata_profile_for_disk_count 1)" == "dup" ]] || failed=1
@@ -649,6 +765,12 @@ self_test() {
   array_contains base "${INSTALL_PACKAGES[@]}" || failed=1
   ! array_contains firefox "${INSTALL_PACKAGES[@]}" || failed=1
   ! array_contains flatpak "${INSTALL_PACKAGES[@]}" || failed=1
+
+  [[ "$(printf '%s\n' '{"debug_id":"CT-ABCDEFGH","stored":true}' | parse_jlogger_debug_id)" == "CT-ABCDEFGH" ]] || failed=1
+  [[ "$(printf '%s\n' '{"stored":true}' | parse_jlogger_debug_id)" == "" ]] || failed=1
+  is_cancel_message "Installation cancelled." || failed=1
+  is_cancel_message "Prompt canceled." || failed=1
+  ! is_cancel_message "Missing required command." || failed=1
 
   if ((failed)); then
     die "Self-test failed."
@@ -1618,6 +1740,7 @@ EOF
 run_install() {
   require_root
   setup_logging
+  TELEMETRY_ELIGIBLE=1
   trap 'on_exit $?' EXIT
   require_tty
   require_commands awk blkid btrfs cachyos-rate-mirrors efibootmgr findmnt genfstab lsblk mkfs.btrfs mkfs.fat mkswap pacman pacstrap parted partprobe readlink sed swapon udevadm wipefs arch-chroot
