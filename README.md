@@ -28,8 +28,7 @@ CachyOS defaults where practical:
 - Btrfs data profile: `single`
 - Btrfs metadata/system profile: `dup` on one disk, `raid1` on two or more disks
 - ZRAM: CachyOS default behavior from `cachyos-settings`
-- Gaming baseline: Steam, AMD Vulkan, 32-bit Vulkan, Wine tooling, Gamescope,
-  MangoHud, Flatpak, Firefox, UMU Launcher, and Faugus Launcher dependencies
+- Software: grouped selector with today’s gaming-ready defaults selected
 
 ## Quick Start
 
@@ -71,6 +70,7 @@ live environment before falling back to `whiptail` or numbered prompts.
 - Timezone.
 - Root password.
 - User password.
+- Optional software bundles.
 - Final destructive confirmation.
 
 Password input is hidden. The installer tells users that no characters or
@@ -80,6 +80,13 @@ The default disk swap recommendation is total swap equal to installed RAM,
 split evenly across the selected disks. For example, a 32 GiB RAM system with
 two selected disks gets about 16 GiB swap per disk. CachyOS ZRAM remains the
 preferred swap layer; disk swap is only the lower-priority fallback.
+
+Default-selected software bundles match the current gaming-ready install:
+Firefox, Steam/AMD Vulkan, Wine tooling, Gamescope/MangoHud, desktop tools,
+maintenance tools, Flatpak support, and a nonfatal Faugus Launcher AUR install
+attempt. TeamSpeak 6 is available as an unchecked optional Flatpak selection.
+Optional Flatpak and AUR app failures are logged but do not fail the base OS
+install.
 
 ## Before You Wipe Anything
 

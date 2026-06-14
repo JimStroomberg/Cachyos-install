@@ -21,6 +21,11 @@ LOG_FILE=""
 declare -a SELECTED_DISKS=()
 declare -a ROOT_PARTS=()
 declare -a SWAP_PARTS=()
+declare -a SELECTED_SOFTWARE_GROUPS=()
+declare -a SELECTED_FLATPAK_APPS=()
+declare -a SELECTED_AUR_APPS=()
+declare -a INSTALL_PACKAGES=()
+declare -a OPTIONAL_INSTALL_FAILURES=()
 
 BOOT_DISK=""
 BOOT_PART=""
@@ -33,6 +38,10 @@ USER_PASSWORD=""
 SWAP_CHOICE=""
 SWAP_TOTAL_MIB=0
 SWAP_PER_DISK_MIB=0
+FLATPAK_SELECTED=0
+FAUGUS_SELECTED=1
+TEAMSPEAK_SELECTED=0
+TEAMSPEAK_FLATPAK_ID="com.teamspeak.TeamSpeak"
 
 BASE_PACKAGES=(
   base
@@ -102,23 +111,17 @@ BASE_PACKAGES=(
   cachyos-zsh-config
 )
 
-COMMON_PACKAGES=(
+FIXED_COMMON_PACKAGES=(
   accountsservice
-  alacritty
   alsa-firmware
   alsa-plugins
   alsa-utils
-  bash-completion
-  btop
   cpupower
   dhclient
   dnsmasq
   dnsutils
-  duf
   ethtool
-  fastfetch
   ffmpegthumbnailer
-  git
   gst-libav
   gst-plugin-pipewire
   gst-plugins-bad
@@ -126,41 +129,73 @@ COMMON_PACKAGES=(
   iwd
   libdvdcss
   mesa-utils
-  micro
-  nano
-  nano-syntax-highlighting
   nss-mdns
-  openssh
-  pacman-contrib
-  paru
   pipewire-alsa
   pipewire-pulse
-  pkgfile
   power-profiles-daemon
-  rebuild-detector
-  reflector
-  ripgrep
-  rsync
   rtkit
-  smartmontools
-  unrar
-  unzip
   upower
-  vim
-  vlc-plugins-all
-  wget
   wireless-regdb
   wpa_supplicant
   xdg-user-dirs
   xdg-utils
 )
 
-DESKTOP_APP_PACKAGES=(
+DESKTOP_TOOLS_PACKAGES=(
+  alacritty
+  ark
+  bash-completion
+  btop
+  dolphin
+  duf
+  fastfetch
+  ffmpegthumbs
+  filelight
+  gwenview
+  haruna
+  kate
+  kcalc
+  kdialog
+  kinfocenter
+  konsole
+  micro
+  nano
+  nano-syntax-highlighting
+  spectacle
+  unrar
+  unzip
+  vim
+  vlc-plugins-all
+)
+
+MAINTENANCE_PACKAGES=(
+  git
+  openssh
+  pacman-contrib
+  paru
+  pkgfile
+  rebuild-detector
+  reflector
+  ripgrep
+  rsync
+  smartmontools
+  wget
+)
+
+AUR_TOOLING_PACKAGES=(
+  git
+  paru
+)
+
+BROWSER_PACKAGES=(
   firefox
+)
+
+FLATPAK_PACKAGES=(
   flatpak
 )
 
-GAMING_PACKAGES=(
+STEAM_AMD_PACKAGES=(
   steam
   steam-devices
   mesa
@@ -168,9 +203,15 @@ GAMING_PACKAGES=(
   vulkan-radeon
   lib32-vulkan-radeon
   vulkan-tools
+)
+
+GAMESCOPE_OVERLAY_PACKAGES=(
   gamescope
   mangohud
   goverlay
+)
+
+WINE_PACKAGES=(
   wine
   wine-gecko
   wine-mono
@@ -196,7 +237,6 @@ FAUGUS_DEPENDENCY_PACKAGES=(
 )
 
 KDE_PACKAGES=(
-  ark
   bluedevil
   breeze-gtk
   cachyos-emerald-kde-theme-git
@@ -204,23 +244,13 @@ KDE_PACKAGES=(
   cachyos-kde-settings
   cachyos-nord-kde-theme-git
   cachyos-themes-sddm
-  dolphin
   egl-wayland
-  ffmpegthumbs
-  filelight
   fwupd
-  gwenview
-  haruna
-  kate
-  kcalc
   kde-gtk-config
   kdeconnect
   kdegraphics-thumbnailers
   kdeplasma-addons
-  kdialog
-  kinfocenter
   kio-admin
-  konsole
   kscreen
   kwallet-pam
   kwalletmanager
@@ -240,7 +270,6 @@ KDE_PACKAGES=(
   qt6-wayland
   sddm
   sddm-kcm
-  spectacle
   xdg-desktop-portal
   xdg-desktop-portal-kde
   xorg-server
@@ -485,6 +514,29 @@ prompt_required() {
   done
 }
 
+prompt_yes_no() {
+  local prompt="$1"
+  local default="$2"
+  local answer suffix
+
+  if [[ "$default" == "yes" ]]; then
+    suffix="[Y/n]"
+  else
+    suffix="[y/N]"
+  fi
+
+  while true; do
+    printf '%s %s: ' "$prompt" "$suffix" >&2
+    read -r answer < /dev/tty || die "Could not read from interactive terminal."
+    answer="${answer:-$default}"
+    case "$answer" in
+      y|Y|yes|YES|Yes) return 0 ;;
+      n|N|no|NO|No) return 1 ;;
+      *) warn "Answer yes or no." ;;
+    esac
+  done
+}
+
 prompt_password() {
   local prompt="$1"
   local first second
@@ -548,6 +600,16 @@ swap_per_disk_mib() {
   fi
 }
 
+array_contains() {
+  local needle="$1"
+  shift
+  local value
+  for value in "$@"; do
+    [[ "$value" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
 self_test() {
   local failed=0
   [[ "$(metadata_profile_for_disk_count 1)" == "dup" ]] || failed=1
@@ -558,6 +620,35 @@ self_test() {
   [[ "$(swap_per_disk_mib 32768 3)" == "10922" ]] || failed=1
   [[ "$(swap_per_disk_mib 0 3)" == "0" ]] || failed=1
   [[ "$(printf '%s\n' "/dev/zram0 disk " "/dev/sda disk usb" "/dev/nvme0n1 disk nvme" | awk '$2 == "disk" && $1 !~ "^/dev/(zram|loop|ram|fd|sr|dm-)" && $3 != "usb" {print $1}')" == "/dev/nvme0n1" ]] || failed=1
+
+  SELECTED_SOFTWARE_GROUPS=(browser steam wine gamescope desktop maintenance flatpak faugus)
+  normalize_software_selection
+  build_install_package_list
+  array_contains firefox "${INSTALL_PACKAGES[@]}" || failed=1
+  array_contains steam "${INSTALL_PACKAGES[@]}" || failed=1
+  array_contains wine "${INSTALL_PACKAGES[@]}" || failed=1
+  array_contains gamescope "${INSTALL_PACKAGES[@]}" || failed=1
+  array_contains flatpak "${INSTALL_PACKAGES[@]}" || failed=1
+  array_contains paru "${INSTALL_PACKAGES[@]}" || failed=1
+  array_contains python-gobject "${INSTALL_PACKAGES[@]}" || failed=1
+  [[ "$FAUGUS_SELECTED" -eq 1 ]] || failed=1
+
+  SELECTED_SOFTWARE_GROUPS=(teamspeak)
+  normalize_software_selection
+  build_install_package_list
+  [[ "$TEAMSPEAK_SELECTED" -eq 1 ]] || failed=1
+  [[ "$FLATPAK_SELECTED" -eq 1 ]] || failed=1
+  array_contains flatpak "${INSTALL_PACKAGES[@]}" || failed=1
+  array_contains "$TEAMSPEAK_FLATPAK_ID" "${SELECTED_FLATPAK_APPS[@]}" || failed=1
+
+  SELECTED_SOFTWARE_GROUPS=()
+  normalize_software_selection
+  build_install_package_list
+  [[ "$FLATPAK_SELECTED" -eq 0 ]] || failed=1
+  [[ "$FAUGUS_SELECTED" -eq 0 ]] || failed=1
+  array_contains base "${INSTALL_PACKAGES[@]}" || failed=1
+  ! array_contains firefox "${INSTALL_PACKAGES[@]}" || failed=1
+  ! array_contains flatpak "${INSTALL_PACKAGES[@]}" || failed=1
 
   if ((failed)); then
     die "Self-test failed."
@@ -829,6 +920,108 @@ collect_identity() {
   USER_PASSWORD="$(prompt_password "$USERNAME password")"
 }
 
+software_group_label() {
+  case "$1" in
+    browser) printf 'Browser: Firefox' ;;
+    steam) printf 'Steam + AMD Vulkan support' ;;
+    wine) printf 'Wine, Protontricks, and UMU Launcher' ;;
+    gamescope) printf 'Gamescope, MangoHud, and GOverlay' ;;
+    desktop) printf 'Desktop tools, media apps, and editors' ;;
+    maintenance) printf 'Maintenance, SSH, and package helper tools' ;;
+    flatpak) printf 'Flatpak support and Flathub' ;;
+    faugus) printf 'Faugus Launcher AUR install attempt' ;;
+    teamspeak) printf 'TeamSpeak 6 Flatpak' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+software_group_selected() {
+  local needle="$1"
+  local group
+  for group in "${SELECTED_SOFTWARE_GROUPS[@]+"${SELECTED_SOFTWARE_GROUPS[@]}"}"; do
+    [[ "$group" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
+select_software_tui() {
+  local output group
+  output="$(run_tui --title "Software selection" --checklist "Choose optional software bundles. Defaults match the current gaming-ready install. Space toggles, Enter continues." 24 92 12 \
+    browser "Firefox browser" on \
+    steam "Steam, Steam devices, AMD Vulkan, and 32-bit Vulkan" on \
+    wine "Wine, Wine Mono/Gecko, Winetricks, Protontricks, UMU" on \
+    gamescope "Gamescope, MangoHud, and GOverlay" on \
+    desktop "Desktop tools, media apps, editors, terminal utilities" on \
+    maintenance "Git, SSH, rsync, smartmontools, paru, package helpers" on \
+    flatpak "Flatpak support and Flathub remote" on \
+    faugus "Attempt Faugus Launcher install from AUR as user" on \
+    teamspeak "TeamSpeak 6 from Flathub, nonfatal if unavailable" off)" || die "Software selection cancelled."
+
+  SELECTED_SOFTWARE_GROUPS=()
+  mapfile -t SELECTED_SOFTWARE_GROUPS < <(tr -d '"' <<< "$output" | tr ' ' '\n' | sed '/^$/d')
+}
+
+select_software_plain() {
+  local group label default
+  SELECTED_SOFTWARE_GROUPS=()
+  cat >&2 <<'EOF'
+
+Software selection
+Choose optional software bundles. Defaults match the current gaming-ready install.
+EOF
+
+  for group in browser steam wine gamescope desktop maintenance flatpak faugus teamspeak; do
+    label="$(software_group_label "$group")"
+    default="yes"
+    [[ "$group" == "teamspeak" ]] && default="no"
+    if prompt_yes_no "$label" "$default"; then
+      SELECTED_SOFTWARE_GROUPS+=("$group")
+    fi
+  done
+}
+
+normalize_software_selection() {
+  local group
+  local -a original_groups=("${SELECTED_SOFTWARE_GROUPS[@]+"${SELECTED_SOFTWARE_GROUPS[@]}"}")
+
+  FLATPAK_SELECTED=0
+  FAUGUS_SELECTED=0
+  TEAMSPEAK_SELECTED=0
+  SELECTED_FLATPAK_APPS=()
+  SELECTED_AUR_APPS=()
+
+  if array_contains teamspeak "${original_groups[@]+"${original_groups[@]}"}"; then
+    TEAMSPEAK_SELECTED=1
+    FLATPAK_SELECTED=1
+    SELECTED_FLATPAK_APPS+=("$TEAMSPEAK_FLATPAK_ID")
+  elif array_contains flatpak "${original_groups[@]+"${original_groups[@]}"}"; then
+    FLATPAK_SELECTED=1
+  fi
+
+  if array_contains faugus "${original_groups[@]+"${original_groups[@]}"}"; then
+    FAUGUS_SELECTED=1
+    SELECTED_AUR_APPS+=("faugus-launcher")
+  fi
+
+  SELECTED_SOFTWARE_GROUPS=()
+  for group in browser steam wine gamescope desktop maintenance flatpak faugus teamspeak; do
+    if [[ "$group" == "flatpak" && "$FLATPAK_SELECTED" -eq 1 ]]; then
+      SELECTED_SOFTWARE_GROUPS+=("$group")
+    elif array_contains "$group" "${original_groups[@]+"${original_groups[@]}"}"; then
+      SELECTED_SOFTWARE_GROUPS+=("$group")
+    fi
+  done
+}
+
+collect_software_selection() {
+  if [[ -n "$TUI_CMD" ]]; then
+    select_software_tui
+  else
+    select_software_plain
+  fi
+  normalize_software_selection
+}
+
 build_partition_plan() {
   local disk_count disk root_part swap_part
   disk_count="${#SELECTED_DISKS[@]}"
@@ -860,7 +1053,7 @@ build_partition_plan() {
 }
 
 print_install_plan() {
-  local disk root_index=0
+  local disk group root_index=0
   cat <<EOF
 
 Target install plan
@@ -915,6 +1108,25 @@ EOF
     printf '\nDisk swap:\n  %s MiB total target, %s MiB per selected disk, priority %s\n' "$SWAP_TOTAL_MIB" "$SWAP_PER_DISK_MIB" "$SWAP_PRIORITY"
   else
     printf '\nDisk swap:\n  No disk swap partitions. CachyOS ZRAM remains enabled by default.\n'
+  fi
+
+  printf '\nSelected software groups:\n'
+  if ((${#SELECTED_SOFTWARE_GROUPS[@]})); then
+    for group in "${SELECTED_SOFTWARE_GROUPS[@]}"; do
+      printf '  - %s\n' "$(software_group_label "$group")"
+    done
+  else
+    printf '  - None selected beyond fixed CachyOS/KDE core\n'
+  fi
+
+  if ((${#SELECTED_FLATPAK_APPS[@]})); then
+    printf '\nSelected Flatpak apps:\n'
+    printf '  - %s\n' "${SELECTED_FLATPAK_APPS[@]}"
+  fi
+
+  if ((${#SELECTED_AUR_APPS[@]})); then
+    printf '\nSelected AUR apps:\n'
+    printf '  - %s\n' "${SELECTED_AUR_APPS[@]}"
   fi
   printf '\n'
 }
@@ -1031,18 +1243,48 @@ mount_target() {
   done
 }
 
+add_install_packages() {
+  local package
+  for package in "$@"; do
+    [[ -z "$package" ]] && continue
+    if ! array_contains "$package" "${INSTALL_PACKAGES[@]+"${INSTALL_PACKAGES[@]}"}"; then
+      INSTALL_PACKAGES+=("$package")
+    fi
+  done
+}
+
+build_install_package_list() {
+  INSTALL_PACKAGES=()
+
+  add_install_packages "${BASE_PACKAGES[@]}"
+  add_install_packages "${FIXED_COMMON_PACKAGES[@]}"
+  add_install_packages "${KDE_PACKAGES[@]}"
+
+  software_group_selected browser && add_install_packages "${BROWSER_PACKAGES[@]}"
+  software_group_selected steam && add_install_packages "${STEAM_AMD_PACKAGES[@]}"
+  software_group_selected wine && add_install_packages "${WINE_PACKAGES[@]}"
+  software_group_selected gamescope && add_install_packages "${GAMESCOPE_OVERLAY_PACKAGES[@]}"
+  software_group_selected desktop && add_install_packages "${DESKTOP_TOOLS_PACKAGES[@]}"
+  software_group_selected maintenance && add_install_packages "${MAINTENANCE_PACKAGES[@]}"
+
+  if ((FLATPAK_SELECTED)); then
+    add_install_packages "${FLATPAK_PACKAGES[@]}"
+  fi
+
+  if ((FAUGUS_SELECTED)); then
+    add_install_packages "${AUR_TOOLING_PACKAGES[@]}"
+    add_install_packages "${FAUGUS_DEPENDENCY_PACKAGES[@]}"
+  fi
+}
+
 pacstrap_target() {
-  pacstrap -K "$TARGET_MOUNT" \
-    "${BASE_PACKAGES[@]}" \
-    "${COMMON_PACKAGES[@]}" \
-    "${DESKTOP_APP_PACKAGES[@]}" \
-    "${GAMING_PACKAGES[@]}" \
-    "${FAUGUS_DEPENDENCY_PACKAGES[@]}" \
-    "${KDE_PACKAGES[@]}"
+  pacstrap -K "$TARGET_MOUNT" "${INSTALL_PACKAGES[@]}"
 }
 
 install_packages() {
   log "Installing CachyOS package baseline and KDE Plasma"
+  build_install_package_list
+  log "Selected pacstrap package count: ${#INSTALL_PACKAGES[@]}"
   if ! pacstrap_target; then
     warn "pacstrap failed. Re-ranking mirrors, refreshing package databases, and retrying once."
     cachyos-rate-mirrors || warn "Mirror ranking failed before pacstrap retry."
@@ -1068,8 +1310,10 @@ EOF
   fi
 
   arch-chroot "$TARGET_MOUNT" pacman -Sy --noconfirm
-  arch-chroot "$TARGET_MOUNT" flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
-    || warn "Could not add Flathub remote. Flatpak can be configured after first boot."
+  if ((FLATPAK_SELECTED)); then
+    arch-chroot "$TARGET_MOUNT" flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
+      || warn "Could not add Flathub remote. Flatpak can be configured after first boot."
+  fi
 }
 
 write_fstab() {
@@ -1139,6 +1383,65 @@ EOF
   arch-chroot "$TARGET_MOUNT" systemctl enable sddm
   arch-chroot "$TARGET_MOUNT" ufw --force enable || warn "ufw enable failed; service is still enabled."
   arch-chroot "$TARGET_MOUNT" chwd -a || warn "chwd hardware detection failed; AMD/Mesa defaults may still be sufficient."
+}
+
+install_selected_flatpaks() {
+  local app
+  ((${#SELECTED_FLATPAK_APPS[@]})) || return 0
+
+  log "Installing selected Flatpak applications"
+  for app in "${SELECTED_FLATPAK_APPS[@]}"; do
+    if arch-chroot "$TARGET_MOUNT" flatpak install --system -y flathub "$app"; then
+      log "Installed Flatpak: $app"
+    else
+      warn "Optional Flatpak install failed: $app"
+      OPTIONAL_INSTALL_FAILURES+=("Flatpak $app failed. Retry after first boot: flatpak install --system -y flathub $app")
+    fi
+  done
+}
+
+install_selected_aur_apps() {
+  local app
+  ((${#SELECTED_AUR_APPS[@]})) || return 0
+
+  log "Installing selected AUR applications as $USERNAME"
+  for app in "${SELECTED_AUR_APPS[@]}"; do
+    if arch-chroot "$TARGET_MOUNT" runuser -u "$USERNAME" -- paru -S --needed --noconfirm --skipreview "$app"; then
+      log "Installed AUR package: $app"
+    else
+      warn "Optional AUR install failed: $app"
+      OPTIONAL_INSTALL_FAILURES+=("AUR $app failed. Retry after first boot: paru -S $app")
+    fi
+  done
+}
+
+install_optional_software() {
+  install_selected_flatpaks
+  install_selected_aur_apps
+}
+
+print_optional_software_results() {
+  if ((${#SELECTED_FLATPAK_APPS[@]} == 0 && ${#SELECTED_AUR_APPS[@]} == 0)); then
+    printf '\nOptional app installs: none selected.\n'
+    return
+  fi
+
+  printf '\nOptional app install summary:\n'
+  if ((${#SELECTED_FLATPAK_APPS[@]})); then
+    printf '  Selected Flatpaks:\n'
+    printf '    - %s\n' "${SELECTED_FLATPAK_APPS[@]}"
+  fi
+  if ((${#SELECTED_AUR_APPS[@]})); then
+    printf '  Selected AUR apps:\n'
+    printf '    - %s\n' "${SELECTED_AUR_APPS[@]}"
+  fi
+
+  if ((${#OPTIONAL_INSTALL_FAILURES[@]})); then
+    printf '\nOptional install follow-up:\n'
+    printf '  - %s\n' "${OPTIONAL_INSTALL_FAILURES[@]}"
+  else
+    printf '  All selected optional apps reported success.\n'
+  fi
 }
 
 configure_limine() {
@@ -1325,6 +1628,7 @@ run_install() {
   select_disks
   collect_swap_policy
   collect_identity
+  collect_software_selection
   build_partition_plan
   confirm_destruction
   prepare_live_environment
@@ -1336,6 +1640,7 @@ run_install() {
   copy_pacman_configuration
   write_fstab
   configure_system
+  install_optional_software
   configure_limine
   verify_installation
 
@@ -1347,6 +1652,8 @@ Review the verification output above before rebooting.
 The full install log is saved at:
 
   $LOG_FILE
+
+$(print_optional_software_results)
 
 To reboot:
 

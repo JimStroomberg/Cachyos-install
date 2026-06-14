@@ -244,8 +244,9 @@ friends or other enthusiasts:
 1. Run `scripts/install-cachyos.sh --preflight` from a real CachyOS live ISO.
 2. Validate one-disk, two-disk, and three-disk destructive installs in disposable
    environments.
-3. Validate the expanded gaming package baseline in a fresh install.
-4. Install Faugus Launcher after first boot with `paru -S faugus-launcher`.
+3. Validate the grouped software selector in a fresh install.
+4. Validate selected optional Flatpak and AUR app behavior, especially
+   TeamSpeak 6 and Faugus Launcher.
 5. Capture post-install verification output from the real machine.
 6. Keep Secure Boot as a post-install step after the base install is verified.
 

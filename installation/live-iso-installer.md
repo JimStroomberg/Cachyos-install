@@ -122,26 +122,33 @@ preferred swap layer.
 
 Hibernate is not configured.
 
-## What The Script Installs
+## Software Selection
 
-- CachyOS base packages and Limine tooling
-- KDE Plasma desktop packages
-- Firefox
-- Flatpak and Flathub
-- Steam and Steam device rules
-- AMD Mesa/Vulkan packages, including 32-bit Vulkan support
-- Gamescope
-- MangoHud and GOverlay
-- Wine, Wine Mono, Wine Gecko, Winetricks, Protontricks
-- UMU Launcher
-- Faugus Launcher dependencies
-- `paru` for AUR packages
+The installer always installs the fixed CachyOS/KDE base: core system packages,
+kernels, firmware, Btrfs tools, Limine tooling, NetworkManager, CachyOS
+settings, KDE Plasma core, and required support packages.
 
-Faugus Launcher itself remains a post-install AUR step:
+It then shows grouped optional software choices. Defaults match the current
+gaming-ready install:
 
-```bash
-paru -S faugus-launcher
+- Firefox browser
+- Steam, Steam device rules, AMD Vulkan, and 32-bit Vulkan support
+- Wine, Wine Mono, Wine Gecko, Winetricks, Protontricks, and UMU Launcher
+- Gamescope, MangoHud, and GOverlay
+- desktop tools, media apps, editors, and terminal utilities
+- maintenance tools such as Git, SSH, rsync, smartmontools, `paru`, and package helpers
+- Flatpak support and Flathub
+- Faugus Launcher AUR install attempt
+
+TeamSpeak 6 is available as an unchecked optional Flatpak app:
+
+```text
+com.teamspeak.TeamSpeak
 ```
+
+Selecting TeamSpeak automatically enables Flatpak support. Flatpak and AUR app
+installation failures are nonfatal; the installer logs the failure and prints a
+post-install retry command.
 
 ## Logging
 

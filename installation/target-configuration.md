@@ -16,7 +16,8 @@ installer, Limine, and Secure Boot documentation before a production release.
 - Boot manager: Limine.
 - Root filesystem: Btrfs on one or more selected disks.
 - Desktop profile: KDE Plasma.
-- Gaming profile: Steam-ready AMD/Vulkan desktop with Faugus Launcher dependencies.
+- Gaming profile: selectable Steam-ready AMD/Vulkan desktop bundles with
+  optional Faugus Launcher and TeamSpeak 6 app installs.
 - Initramfs path: CachyOS mkinitcpio/Limine tooling.
 - Encryption: none.
 - Secure Boot: disabled during installation.
@@ -266,10 +267,11 @@ plymouth
 cachyos-plymouth-bootanimation
 ```
 
-KDE Plasma should follow the current CachyOS netinstall package set rather than
-a hand-picked minimal KDE list.
+KDE Plasma core should follow the current CachyOS netinstall package set where
+practical. Desktop convenience applications can be controlled by the software
+selection screen.
 
-Gaming baseline includes:
+Default-selected optional gaming bundles include:
 
 ```text
 firefox
@@ -292,15 +294,15 @@ protontricks
 umu-launcher
 ```
 
-Faugus Launcher is installed after first boot from the AUR:
+Optional app behavior:
 
-```bash
-paru -S faugus-launcher
+```text
+Faugus Launcher: selected by default, attempted from AUR as the created user
+TeamSpeak 6: optional unchecked Flatpak, com.teamspeak.TeamSpeak
 ```
 
-The install script should provide the AUR tooling and dependencies required for
-that package, but should not build AUR packages as root during the destructive
-live-ISO install.
+The install script must not build AUR packages as root. AUR and Flatpak app
+failures are nonfatal and should produce post-install retry commands.
 
 ## Services
 
