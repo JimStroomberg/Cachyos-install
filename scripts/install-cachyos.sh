@@ -673,16 +673,21 @@ upload_install_log() {
   [[ -f "$log_file" ]] || return 1
   command -v curl >/dev/null 2>&1 || return 1
 
-  if command -v gzip >/dev/null 2>&1; then
-    if ! response="$(
-      gzip -c "$log_file" | curl -fsS -X POST "$JLOGGER_UPLOAD_URL" \
+  if command -v gzip >/dev/null 2>&1 && command -v base64 >/dev/null 2>&1; then
+    response="$(
+      gzip -c "$log_file" | base64 | tr -d '\n' | curl -fsS -X POST "$JLOGGER_UPLOAD_URL" \
         -H 'Content-Type: text/plain' \
         -H 'Content-Encoding: gzip' \
         --data-binary @-
-    )"; then
-      return 1
+    )" || response=""
+
+    debug_id="$(printf '%s\n' "$response" | parse_jlogger_debug_id)"
+    if [[ -z "$debug_id" ]]; then
+      warn "Compressed telemetry upload failed; retrying without compression."
     fi
-  else
+  fi
+
+  if [[ -z "${debug_id:-}" ]]; then
     if ! response="$(
       curl -fsS -X POST "$JLOGGER_UPLOAD_URL" \
         -H 'Content-Type: text/plain' \
@@ -690,9 +695,9 @@ upload_install_log() {
     )"; then
       return 1
     fi
+    debug_id="$(printf '%s\n' "$response" | parse_jlogger_debug_id)"
   fi
 
-  debug_id="$(printf '%s\n' "$response" | parse_jlogger_debug_id)"
   [[ -n "$debug_id" ]] || return 1
 
   printf '\nUploaded redacted installer log. Debug ID: %s\n' "$debug_id"
