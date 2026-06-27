@@ -300,6 +300,19 @@ protontricks
 umu-launcher
 ```
 
+Fresh installs include a small local update helper:
+
+```text
+/usr/local/bin/update-machine
+~/Desktop/Update Machine.desktop
+/usr/share/applications/update-machine.desktop
+```
+
+The helper should favor official CachyOS/Arch repository updates plus firmware
+updates as the recommended path. AUR/foreign package updates remain an explicit
+separate choice because they can compile locally and are not the normal OS
+update path. Helper logs live under `~/.local/state/update-machine/`.
+
 Optional app behavior:
 
 ```text

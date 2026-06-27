@@ -97,6 +97,15 @@ attempt. TeamSpeak 6 is available as an unchecked optional Flatpak selection.
 Optional Flatpak and AUR app failures are logged but do not fail the base OS
 install.
 
+Fresh installs also get an "Update Machine" helper in the application menu and
+on the user's Desktop. It opens a terminal menu for official repo updates,
+firmware updates, and optional AUR/foreign package updates. Its logs are stored
+under:
+
+```text
+~/.local/state/update-machine/
+```
+
 After pacstrap, the installer normalizes the target `/etc/pacman.conf` so the
 CachyOS binary repositories are enabled. On v3/v4-capable CPUs this includes
 the matching optimized CachyOS repos before the Arch repos, preventing CachyOS

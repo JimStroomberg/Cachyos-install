@@ -154,6 +154,16 @@ Selecting TeamSpeak automatically enables Flatpak support. Flatpak and AUR app
 installation failures are nonfatal; the installer logs the failure and prints a
 post-install retry command.
 
+The installed desktop also gets an "Update Machine" helper:
+
+- `/usr/local/bin/update-machine`
+- application menu entry: `Update Machine`
+- Desktop launcher: `~/Desktop/Update Machine.desktop`
+
+The helper opens in Konsole and offers recommended official repo plus firmware
+updates, repo-only updates, firmware-only updates, and optional AUR/foreign
+updates. Logs are written to `~/.local/state/update-machine/`.
+
 ## Logging
 
 Each run writes a full log to the live environment Desktop when possible:

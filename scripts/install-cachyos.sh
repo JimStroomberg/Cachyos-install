@@ -254,6 +254,7 @@ KDE_PACKAGES=(
   kdegraphics-thumbnailers
   kdeplasma-addons
   kio-admin
+  konsole
   kscreen
   kwallet-pam
   kwalletmanager
@@ -1569,6 +1570,275 @@ write_fstab() {
   rm -f "$tmp_fstab"
 }
 
+install_update_machine_helper() {
+  local user_home desktop_file
+
+  log "Installing Update Machine helper"
+  user_home="/home/$USERNAME"
+  desktop_file="$TARGET_MOUNT$user_home/Desktop/Update Machine.desktop"
+
+  install -d -m 0755 "$TARGET_MOUNT/usr/local/bin"
+  cat > "$TARGET_MOUNT/usr/local/bin/update-machine" <<'EOF'
+#!/usr/bin/env bash
+set -u
+
+log_dir="${XDG_STATE_HOME:-$HOME/.local/state}/update-machine"
+mkdir -p "$log_dir"
+log_file="$log_dir/update-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee -a "$log_file") 2>&1
+
+repo_updates_file="$(mktemp)"
+aur_updates_file="$(mktemp)"
+firmware_updates_file="$(mktemp)"
+sudo_keepalive_pid=""
+
+cleanup() {
+  stop_sudo_keepalive
+  rm -f "$repo_updates_file" "$aur_updates_file" "$firmware_updates_file"
+}
+
+trap cleanup EXIT
+
+section() {
+  printf '\n== %s ==\n' "$1"
+}
+
+pause() {
+  printf '\nPress Enter to close this window...'
+  read -r _
+}
+
+stop_sudo_keepalive() {
+  if [[ -n "$sudo_keepalive_pid" ]]; then
+    kill "$sudo_keepalive_pid" >/dev/null 2>&1 || true
+    wait "$sudo_keepalive_pid" 2>/dev/null || true
+    sudo_keepalive_pid=""
+  fi
+}
+
+ensure_sudo() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    printf 'sudo is not installed; cannot run privileged update commands.\n'
+    return 1
+  fi
+
+  printf '\nUnlocking administrator access once for this update run...\n'
+  sudo -v || return 1
+
+  if [[ -z "$sudo_keepalive_pid" ]]; then
+    (
+      while true; do
+        sudo -n true >/dev/null 2>&1 || exit
+        sleep 60
+      done
+    ) &
+    sudo_keepalive_pid="$!"
+  fi
+}
+
+run_checkupdates() {
+  if command -v checkupdates >/dev/null 2>&1; then
+    checkupdates >"$repo_updates_file" 2>/dev/null || true
+  else
+    printf 'checkupdates is not installed. Install pacman-contrib to enable safe repo update checks.\n' >"$repo_updates_file"
+  fi
+}
+
+run_aur_check() {
+  if command -v paru >/dev/null 2>&1; then
+    paru -Qua --color never >"$aur_updates_file" 2>/dev/null || true
+  else
+    printf 'paru is not installed. AUR update checks are unavailable.\n' >"$aur_updates_file"
+  fi
+}
+
+run_firmware_check() {
+  if command -v fwupdmgr >/dev/null 2>&1; then
+    fwupdmgr refresh --force >/dev/null 2>&1 || true
+    fwupdmgr get-updates >"$firmware_updates_file" 2>&1 || true
+  else
+    printf 'fwupdmgr is not installed. Firmware update checks are unavailable.\n' >"$firmware_updates_file"
+  fi
+}
+
+show_checks() {
+  section "Log file"
+  printf '%s\n' "$log_file"
+
+  section "Official repo updates"
+  if [[ -s "$repo_updates_file" ]]; then
+    cat "$repo_updates_file"
+  else
+    printf 'No official repo updates found.\n'
+  fi
+
+  section "AUR/foreign package updates"
+  if [[ -s "$aur_updates_file" ]]; then
+    cat "$aur_updates_file"
+    if grep -Eq '^linux-cachyos(|-headers|-lts|-lts-headers)[[:space:]]' "$aur_updates_file"; then
+      printf '\nWarning: CachyOS kernel packages are listed as AUR/foreign updates.\n'
+      printf 'Updating these via AUR can compile kernels locally and may take a long time.\n'
+      printf 'Use the recommended update option unless you intentionally want AUR/foreign updates.\n'
+    fi
+  else
+    printf 'No AUR updates found.\n'
+  fi
+
+  section "Firmware updates"
+  if [[ -s "$firmware_updates_file" ]]; then
+    cat "$firmware_updates_file"
+  else
+    printf 'No firmware update output was returned.\n'
+  fi
+}
+
+update_repo_packages() {
+  section "Updating official repo packages"
+  ensure_sudo || return 1
+
+  sudo pacman -Syu
+}
+
+update_aur_packages() {
+  section "Updating AUR/foreign packages"
+  ensure_sudo || return 1
+
+  if command -v paru >/dev/null 2>&1; then
+    paru --sudoloop -Sua
+  else
+    printf 'paru is not installed. AUR/foreign package updates are unavailable.\n'
+    return 1
+  fi
+}
+
+update_firmware() {
+  section "Updating firmware"
+  if command -v fwupdmgr >/dev/null 2>&1; then
+    ensure_sudo || return 1
+    sudo fwupdmgr update
+  else
+    printf 'fwupdmgr is not installed.\n'
+    return 1
+  fi
+}
+
+clear
+printf 'Checking CachyOS package and firmware updates...\n'
+run_checkupdates
+run_aur_check
+run_firmware_check
+show_checks
+
+while true; do
+  printf '\nWhat do you want to update?\n'
+  printf '  1) Recommended updates (official repo packages + firmware)\n'
+  printf '  2) Official repo packages only\n'
+  printf '  3) AUR/foreign packages only (may compile locally)\n'
+  printf '  4) Firmware only\n'
+  printf '  5) Everything (official repo + AUR/foreign + firmware)\n'
+  printf '  6) Re-check updates\n'
+  printf '  q) Quit\n'
+  printf '\nChoice: '
+  read -r choice
+
+  case "${choice,,}" in
+    1|r|recommended)
+      if update_repo_packages; then
+        run_firmware_check
+        update_firmware
+      else
+        printf '\nPackage update failed. Firmware update was skipped.\n'
+        printf 'Check the log above for the failed mirror or package error.\n'
+      fi
+      stop_sudo_keepalive
+      break
+      ;;
+    2|o|os|repo)
+      update_repo_packages
+      stop_sudo_keepalive
+      break
+      ;;
+    3|a|aur|foreign)
+      update_aur_packages
+      stop_sudo_keepalive
+      break
+      ;;
+    4|f|firmware)
+      update_firmware
+      stop_sudo_keepalive
+      break
+      ;;
+    5|e|everything|all)
+      if update_repo_packages; then
+        update_aur_packages
+        run_firmware_check
+        update_firmware
+      else
+        printf '\nPackage update failed. AUR/foreign and firmware updates were skipped.\n'
+        printf 'Check the log above for the failed mirror or package error.\n'
+      fi
+      stop_sudo_keepalive
+      break
+      ;;
+    6|recheck)
+      clear
+      printf 'Re-checking updates...\n'
+      : >"$repo_updates_file"
+      : >"$aur_updates_file"
+      : >"$firmware_updates_file"
+      run_checkupdates
+      run_aur_check
+      run_firmware_check
+      show_checks
+      ;;
+    q|quit|exit)
+      printf 'No updates were installed.\n'
+      break
+      ;;
+    *)
+      printf 'Invalid choice.\n'
+      ;;
+  esac
+done
+
+pause
+EOF
+  chmod 0755 "$TARGET_MOUNT/usr/local/bin/update-machine"
+
+  install -d -m 0755 "$TARGET_MOUNT/usr/share/applications"
+  cat > "$TARGET_MOUNT/usr/share/applications/update-machine.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Update Machine
+Comment=Check and install CachyOS OS and firmware updates
+Exec=konsole -e /usr/local/bin/update-machine
+Icon=system-software-update
+Terminal=false
+Categories=System;
+StartupNotify=true
+EOF
+  chmod 0644 "$TARGET_MOUNT/usr/share/applications/update-machine.desktop"
+
+  install -d -m 0755 "$TARGET_MOUNT$user_home/Desktop"
+  cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Update Machine
+Comment=Check and install CachyOS OS and firmware updates
+Exec=konsole --workdir $user_home -e /usr/local/bin/update-machine
+Icon=system-software-update
+Terminal=false
+Categories=System;
+StartupNotify=true
+EOF
+  chmod 0755 "$desktop_file"
+  arch-chroot "$TARGET_MOUNT" chown -R "$USERNAME:$USERNAME" "$user_home/Desktop"
+}
+
 configure_system() {
   log "Configuring installed system"
 
@@ -1596,6 +1866,8 @@ EOF
   install -d -m 0750 "$TARGET_MOUNT/etc/sudoers.d"
   printf '%%wheel ALL=(ALL:ALL) ALL\n' > "$TARGET_MOUNT/etc/sudoers.d/10-wheel"
   chmod 0440 "$TARGET_MOUNT/etc/sudoers.d/10-wheel"
+
+  install_update_machine_helper
 
   arch-chroot "$TARGET_MOUNT" systemctl enable NetworkManager
   arch-chroot "$TARGET_MOUNT" systemctl enable systemd-timesyncd
