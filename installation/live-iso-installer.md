@@ -92,6 +92,10 @@ The preflight mode checks:
 Preflight is informational. The destructive installer still performs hard-stop
 checks before making changes.
 
+If the live ISO pacman config is missing CachyOS repository sections, preflight
+warns about it. The install step still normalizes the target `/etc/pacman.conf`
+and enables the appropriate CachyOS binary repos for the detected CPU level.
+
 ## Guided Disk Model
 
 The installer now supports one or more selected disks:

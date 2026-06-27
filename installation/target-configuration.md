@@ -267,6 +267,12 @@ plymouth
 cachyos-plymouth-bootanimation
 ```
 
+The target pacman configuration must include CachyOS binary repositories, not
+only Arch `core`, `extra`, and `multilib`. The installer writes the matching
+optimized CachyOS repo block for v3/v4-capable CPUs plus the generic `cachyos`
+repo, so installed CachyOS kernels continue to update from binary packages
+instead of being rebuilt as AUR/foreign packages.
+
 KDE Plasma core should follow the current CachyOS netinstall package set where
 practical. Desktop convenience applications can be controlled by the software
 selection screen.

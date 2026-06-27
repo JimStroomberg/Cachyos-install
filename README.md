@@ -97,6 +97,11 @@ attempt. TeamSpeak 6 is available as an unchecked optional Flatpak selection.
 Optional Flatpak and AUR app failures are logged but do not fail the base OS
 install.
 
+After pacstrap, the installer normalizes the target `/etc/pacman.conf` so the
+CachyOS binary repositories are enabled. On v3/v4-capable CPUs this includes
+the matching optimized CachyOS repos before the Arch repos, preventing CachyOS
+kernels and base packages from being treated as AUR/foreign packages later.
+
 ## Before You Wipe Anything
 
 Check these before continuing past the final confirmation:

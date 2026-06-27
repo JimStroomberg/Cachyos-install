@@ -733,6 +733,7 @@ maybe_upload_install_log() {
 
 self_test() {
   local failed=0
+  local repo_test_conf
   [[ "$(metadata_profile_for_disk_count 1)" == "dup" ]] || failed=1
   [[ "$(metadata_profile_for_disk_count 2)" == "raid1" ]] || failed=1
   [[ "$(metadata_profile_for_disk_count 4)" == "raid1" ]] || failed=1
@@ -776,6 +777,22 @@ self_test() {
   is_cancel_message "Installation cancelled." || failed=1
   is_cancel_message "Prompt canceled." || failed=1
   ! is_cancel_message "Missing required command." || failed=1
+
+  repo_test_conf="$(mktemp)"
+  cat > "$repo_test_conf" <<'EOF'
+[options]
+Architecture = auto
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+EOF
+  ensure_cachyos_repositories "$repo_test_conf"
+  grep -Eq '^\[cachyos(|-v3|-v4)\]$' "$repo_test_conf" || failed=1
+  grep -q '^\[core\]$' "$repo_test_conf" || failed=1
+  rm -f "$repo_test_conf"
 
   if ((failed)); then
     die "Self-test failed."
@@ -1420,12 +1437,90 @@ install_packages() {
   fi
 }
 
+detect_cachyos_repo_variant() {
+  if /lib/ld-linux-x86-64.so.2 --help 2>/dev/null | grep -q 'x86-64-v4 (supported'; then
+    printf 'v4'
+  elif /lib/ld-linux-x86-64.so.2 --help 2>/dev/null | grep -q 'x86-64-v3 (supported'; then
+    printf 'v3'
+  else
+    printf 'generic'
+  fi
+}
+
+write_cachyos_repo_block() {
+  local variant="$1"
+
+  if [[ "$variant" == "generic" ]]; then
+    cat <<'EOF'
+[cachyos]
+Include = /etc/pacman.d/cachyos-mirrorlist
+EOF
+    return 0
+  fi
+
+  cat <<EOF
+[cachyos-$variant]
+Include = /etc/pacman.d/cachyos-$variant-mirrorlist
+
+[cachyos-core-$variant]
+Include = /etc/pacman.d/cachyos-$variant-mirrorlist
+
+[cachyos-extra-$variant]
+Include = /etc/pacman.d/cachyos-$variant-mirrorlist
+
+[cachyos]
+Include = /etc/pacman.d/cachyos-mirrorlist
+EOF
+}
+
+ensure_cachyos_repositories() {
+  local conf="$1"
+  local variant tmp stripped block
+
+  variant="$(detect_cachyos_repo_variant)"
+  tmp="$(mktemp)"
+  stripped="$(mktemp)"
+  block="$(write_cachyos_repo_block "$variant")"
+
+  awk '
+    /^\[(cachyos|cachyos-v3|cachyos-v4|cachyos-core-v3|cachyos-core-v4|cachyos-extra-v3|cachyos-extra-v4)\]$/ {
+      skip=1
+      next
+    }
+    /^\[/ {
+      skip=0
+    }
+    !skip {
+      print
+    }
+  ' "$conf" > "$stripped"
+
+  awk -v block="$block" '
+    /^\[core\]$/ && !inserted {
+      printf "%s\n\n", block
+      inserted=1
+    }
+    { print }
+    END {
+      if (!inserted) {
+        printf "\n%s\n", block
+      }
+    }
+  ' "$stripped" > "$tmp"
+
+  install -m 0644 "$tmp" "$conf"
+  rm -f "$tmp" "$stripped"
+  log "Enabled CachyOS $variant binary repositories in target pacman.conf"
+}
+
 copy_pacman_configuration() {
   log "Copying CachyOS pacman repository configuration"
   install -m 0644 /etc/pacman.conf "$TARGET_MOUNT/etc/pacman.conf"
   if [[ -f /etc/pacman-more.conf ]]; then
     install -m 0644 /etc/pacman-more.conf "$TARGET_MOUNT/etc/pacman-more.conf"
   fi
+
+  ensure_cachyos_repositories "$TARGET_MOUNT/etc/pacman.conf"
 
   sed -i '/^#\[multilib\]/{s/^#//;n;s/^#//}' "$TARGET_MOUNT/etc/pacman.conf"
   if ! grep -q '^\[multilib\]' "$TARGET_MOUNT/etc/pacman.conf"; then
@@ -1706,10 +1801,12 @@ run_preflight() {
     print_preflight_check "Network" "WARN" "connectivity not confirmed"
   fi
 
-  if [[ -f /etc/pacman.conf ]] && grep -Eiq 'cachyos|core|extra' /etc/pacman.conf; then
-    print_preflight_check "Pacman config" "OK" "/etc/pacman.conf present"
+  if [[ -f /etc/pacman.conf ]] && grep -Eq '^\[cachyos(|-v3|-v4)\]' /etc/pacman.conf; then
+    print_preflight_check "Pacman config" "OK" "CachyOS repositories enabled"
+  elif [[ -f /etc/pacman.conf ]]; then
+    print_preflight_check "Pacman config" "WARN" "CachyOS repositories missing; installer will add them to target"
   else
-    print_preflight_check "Pacman config" "WARN" "CachyOS live ISO pacman config not confirmed"
+    print_preflight_check "Pacman config" "WARN" "/etc/pacman.conf missing"
   fi
 
   if ((${#missing[@]})); then
