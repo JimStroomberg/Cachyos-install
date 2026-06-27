@@ -107,9 +107,11 @@ under:
 ```
 
 After pacstrap, the installer normalizes the target `/etc/pacman.conf` so the
-CachyOS binary repositories are enabled. On v3/v4-capable CPUs this includes
-the matching optimized CachyOS repos before the Arch repos, preventing CachyOS
-kernels and base packages from being treated as AUR/foreign packages later.
+CachyOS binary repositories are enabled. It detects the CPU level and writes
+the matching optimized CachyOS repos before the Arch repos: AMD Zen 4/5 uses
+the `znver4` repo family, other v4-capable CPUs use `v4`, v3-capable CPUs use
+`v3`, and older CPUs use generic `cachyos`. This prevents CachyOS kernels and
+base packages from being treated as AUR/foreign packages later.
 
 ## Before You Wipe Anything
 

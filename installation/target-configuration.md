@@ -268,9 +268,18 @@ cachyos-plymouth-bootanimation
 ```
 
 The target pacman configuration must include CachyOS binary repositories, not
-only Arch `core`, `extra`, and `multilib`. The installer writes the matching
-optimized CachyOS repo block for v3/v4-capable CPUs plus the generic `cachyos`
-repo, so installed CachyOS kernels continue to update from binary packages
+only Arch `core`, `extra`, and `multilib`. The installer writes the most
+specific supported CachyOS repo block it can detect:
+
+```text
+AMD Zen 4/5:    znver4 repo family
+x86-64-v4 CPU:  v4 repo family
+x86-64-v3 CPU:  v3 repo family
+older CPU:      generic cachyos repo
+```
+
+The generic `cachyos` repo remains enabled as a fallback after the optimized
+repo block. This keeps installed CachyOS kernels updating from binary packages
 instead of being rebuilt as AUR/foreign packages.
 
 KDE Plasma core should follow the current CachyOS netinstall package set where

@@ -94,7 +94,8 @@ checks before making changes.
 
 If the live ISO pacman config is missing CachyOS repository sections, preflight
 warns about it. The install step still normalizes the target `/etc/pacman.conf`
-and enables the appropriate CachyOS binary repos for the detected CPU level.
+and enables the appropriate CachyOS binary repos for the detected CPU level:
+AMD Zen 4/5 `znver4`, otherwise x86-64-v4, x86-64-v3, or generic `cachyos`.
 
 ## Guided Disk Model
 

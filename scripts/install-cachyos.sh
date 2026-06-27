@@ -791,8 +791,23 @@ Include = /etc/pacman.d/mirrorlist
 Include = /etc/pacman.d/mirrorlist
 EOF
   ensure_cachyos_repositories "$repo_test_conf"
-  grep -Eq '^\[cachyos(|-v3|-v4)\]$' "$repo_test_conf" || failed=1
+  grep -Eq '^\[cachyos(|-v3|-v4|-znver4)\]$' "$repo_test_conf" || failed=1
   grep -q '^\[core\]$' "$repo_test_conf" || failed=1
+  rm -f "$repo_test_conf"
+
+  repo_test_conf="$(mktemp)"
+  cat > "$repo_test_conf" <<'EOF'
+[options]
+Architecture = auto
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+EOF
+  CACHYOS_INSTALL_CPU_MARCH=znver4 ensure_cachyos_repositories "$repo_test_conf"
+  grep -q '^\[cachyos-znver4\]$' "$repo_test_conf" || failed=1
+  grep -q '^\[cachyos-core-znver4\]$' "$repo_test_conf" || failed=1
+  grep -q '^\[cachyos-extra-znver4\]$' "$repo_test_conf" || failed=1
+  grep -q '^Include = /etc/pacman.d/cachyos-v4-mirrorlist$' "$repo_test_conf" || failed=1
   rm -f "$repo_test_conf"
 
   if ((failed)); then
@@ -1438,10 +1453,52 @@ install_packages() {
   fi
 }
 
+native_cpu_march() {
+  if [[ -n "${CACHYOS_INSTALL_CPU_MARCH:-}" ]]; then
+    printf '%s' "$CACHYOS_INSTALL_CPU_MARCH"
+    return 0
+  fi
+
+  if command -v gcc >/dev/null 2>&1; then
+    gcc -march=native -Q --help=target 2>/dev/null | awk '$1 == "-march=" {print $2; exit}'
+  fi
+}
+
+cpu_vendor_id() {
+  if [[ -n "${CACHYOS_INSTALL_CPU_VENDOR:-}" ]]; then
+    printf '%s' "$CACHYOS_INSTALL_CPU_VENDOR"
+    return 0
+  fi
+
+  if command -v lscpu >/dev/null 2>&1; then
+    lscpu | awk -F: '/^Vendor ID:/ {gsub(/^[[:space:]]+/, "", $2); print $2; exit}'
+  elif [[ -r /proc/cpuinfo ]]; then
+    awk -F: '/^vendor_id/ {gsub(/^[[:space:]]+/, "", $2); print $2; exit}' /proc/cpuinfo
+  fi
+}
+
+glibc_supports_x86_64_level() {
+  local level="$1"
+  /lib/ld-linux-x86-64.so.2 --help 2>/dev/null | grep -q "x86-64-$level (supported"
+}
+
 detect_cachyos_repo_variant() {
-  if /lib/ld-linux-x86-64.so.2 --help 2>/dev/null | grep -q 'x86-64-v4 (supported'; then
+  local march vendor
+  march="$(native_cpu_march)"
+  vendor="$(cpu_vendor_id)"
+
+  case "$march" in
+    znver4|znver5)
+      printf 'znver4'
+      return 0
+      ;;
+  esac
+
+  if [[ "$vendor" == "AuthenticAMD" ]] && glibc_supports_x86_64_level v4; then
+    printf 'znver4'
+  elif glibc_supports_x86_64_level v4; then
     printf 'v4'
-  elif /lib/ld-linux-x86-64.so.2 --help 2>/dev/null | grep -q 'x86-64-v3 (supported'; then
+  elif glibc_supports_x86_64_level v3; then
     printf 'v3'
   else
     printf 'generic'
@@ -1451,13 +1508,31 @@ detect_cachyos_repo_variant() {
 write_cachyos_repo_block() {
   local variant="$1"
 
-  if [[ "$variant" == "generic" ]]; then
-    cat <<'EOF'
+  case "$variant" in
+    generic)
+      cat <<'EOF'
 [cachyos]
 Include = /etc/pacman.d/cachyos-mirrorlist
 EOF
-    return 0
-  fi
+      return 0
+      ;;
+    znver4)
+      cat <<'EOF'
+[cachyos-znver4]
+Include = /etc/pacman.d/cachyos-v4-mirrorlist
+
+[cachyos-core-znver4]
+Include = /etc/pacman.d/cachyos-v4-mirrorlist
+
+[cachyos-extra-znver4]
+Include = /etc/pacman.d/cachyos-v4-mirrorlist
+
+[cachyos]
+Include = /etc/pacman.d/cachyos-mirrorlist
+EOF
+      return 0
+      ;;
+  esac
 
   cat <<EOF
 [cachyos-$variant]
@@ -1484,7 +1559,7 @@ ensure_cachyos_repositories() {
   block="$(write_cachyos_repo_block "$variant")"
 
   awk '
-    /^\[(cachyos|cachyos-v3|cachyos-v4|cachyos-core-v3|cachyos-core-v4|cachyos-extra-v3|cachyos-extra-v4)\]$/ {
+    /^\[(cachyos|cachyos-v3|cachyos-v4|cachyos-znver4|cachyos-core-v3|cachyos-core-v4|cachyos-core-znver4|cachyos-extra-v3|cachyos-extra-v4|cachyos-extra-znver4)\]$/ {
       skip=1
       next
     }
@@ -2073,7 +2148,7 @@ run_preflight() {
     print_preflight_check "Network" "WARN" "connectivity not confirmed"
   fi
 
-  if [[ -f /etc/pacman.conf ]] && grep -Eq '^\[cachyos(|-v3|-v4)\]' /etc/pacman.conf; then
+  if [[ -f /etc/pacman.conf ]] && grep -Eq '^\[cachyos(|-v3|-v4|-znver4)\]' /etc/pacman.conf; then
     print_preflight_check "Pacman config" "OK" "CachyOS repositories enabled"
   elif [[ -f /etc/pacman.conf ]]; then
     print_preflight_check "Pacman config" "WARN" "CachyOS repositories missing; installer will add them to target"
